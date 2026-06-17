@@ -44,7 +44,7 @@ def main():
     return _cli_main()
 
 
-__version__ = "1.0.0"
+__version__ = "0.1.1"
 __all__ = [
     "Token", "TokenType", "KEYWORDS",
     "Lexer",

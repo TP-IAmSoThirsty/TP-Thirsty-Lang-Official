@@ -13,6 +13,7 @@ from utf.thirsty_lang.ast import (
     Program, FunctionDecl, VariableDecl,
 )
 from utf.thirsty_lang.token import TokenType
+from utf.thirsty_lang import __version__
 
 
 def main():
@@ -22,7 +23,7 @@ def main():
         description="Thirsty-Lang: A governance-first programming language",
         epilog="For more information, see https://thirsty-lang.dev"
     )
-    parser.add_argument("--version", action="version", version="Thirsty-Lang 1.0.0")
+    parser.add_argument("--version", action="version", version=f"Thirsty-Lang {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
