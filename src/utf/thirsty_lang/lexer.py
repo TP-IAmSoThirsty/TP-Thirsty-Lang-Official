@@ -2,8 +2,8 @@
 Thirsty-Lang Lexer
 Character-by-character tokenizer with source span tracking and error handling.
 """
-from src.utf.thirsty_lang.token import Token, TokenType, KEYWORDS
-from src.utf.thirsty_lang.diagnostics import Diagnostic
+from utf.thirsty_lang.token import Token, TokenType, KEYWORDS
+from utf.thirsty_lang.diagnostics import Diagnostic
 
 
 class Lexer:

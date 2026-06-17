@@ -8,7 +8,7 @@ import zlib
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Tuple
 
-from src.utf.tscg.core import ALL_SYMBOLS, OPCODE_TO_SYMBOL
+from utf.tscg.core import ALL_SYMBOLS, OPCODE_TO_SYMBOL
 
 # Frame format constants
 MAGIC = b'TSGB'

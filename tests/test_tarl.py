@@ -8,8 +8,8 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
-from src.utf.tarl.core import PolicyParser, SafeExpr, evaluate_policy
-from src.utf.tarl.runtime import TarlRuntime
+from utf.tarl.core import PolicyParser, SafeExpr, evaluate_policy
+from utf.tarl.runtime import TarlRuntime
 
 
 class TestTarlSpec:

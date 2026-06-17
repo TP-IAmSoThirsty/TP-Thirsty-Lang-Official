@@ -4,7 +4,7 @@ TSCG CLI — Parse, canonicalize, and checksum TSCG expressions.
 import argparse
 import sys
 import json
-from src.utf.tscg.core import (
+from utf.tscg.core import (
     parse, canonical_form, checksum, validate_symbols,
     ALL_SYMBOLS, SYMBOLS, EXTENDED_SYMBOLS, SymbolExpr, PipelineExpr, CombineExpr
 )

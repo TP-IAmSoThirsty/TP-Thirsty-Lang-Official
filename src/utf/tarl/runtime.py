@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict
 from typing import Optional
 from tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
-from src.utf.tarl.core import SafeExpr, PolicyParser, evaluate_policy
+from utf.tarl.core import SafeExpr, PolicyParser, evaluate_policy
 
 
 class LRUCache:
@@ -69,7 +69,7 @@ class TarlRuntime:
 
         # Use provided policy text or self.policy
         if policy_text is not None:
-            from src.utf.tarl.core import PolicyParser
+            from utf.tarl.core import PolicyParser
             policy = PolicyParser.parse(policy_text)
         else:
             policy = self.policy

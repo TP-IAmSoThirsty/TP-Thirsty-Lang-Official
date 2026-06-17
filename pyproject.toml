@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thirsty-lang"
-version = "0.1.0"
+version = "0.1.1"
 description = "A governance-first programming language family"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,8 +30,8 @@ classifiers = [
 "Bug Tracker" = "https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF/issues"
 
 [project.scripts]
-thirsty = "src.utf.thirsty_lang.cli:main"
-thirst-of-gods = "src.utf.thirst_of_gods.cli:main"
+thirsty = "utf.thirsty_lang.cli:main"
+thirst-of-gods = "utf.thirst_of_gods.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

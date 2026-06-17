@@ -5,7 +5,7 @@ Every node carries a span tuple (line_start, col_start, line_end, col_end).
 """
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from src.utf.thirsty_lang.token import TokenType
+from utf.thirsty_lang.token import TokenType
 
 
 # === Expressions ===

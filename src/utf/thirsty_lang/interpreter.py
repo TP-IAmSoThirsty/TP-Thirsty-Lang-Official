@@ -6,9 +6,9 @@ governance enforcement, tail-call optimization, and async support.
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from src.utf.thirsty_lang.token import TokenType
-from src.utf.thirsty_lang.ast import *
-from src.utf.thirsty_lang.module_system import resolve_import, get_builtin
+from utf.thirsty_lang.token import TokenType
+from utf.thirsty_lang.ast import *
+from utf.thirsty_lang.module_system import resolve_import, get_builtin
 
 
 class ReturnException(Exception):

@@ -9,7 +9,7 @@ import hashlib
 import zlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.utf.tscg_b.core import (
+from utf.tscg_b.core import (
     pack_text, unpack_frame, StreamDecoder,
     MAGIC, VERSION, HEADER_SIZE, MIN_FRAME_SIZE,
     FLAG_NONE, FLAG_EOF, FLAG_FRAGMENT,

@@ -6,7 +6,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.utf.shadow_thirst.core import (
+from utf.shadow_thirst.core import (
     MutationParser, ShadowModule, 
     PlaneIsolationAnalyzer, DeterminismAnalyzer, ResourceEstimator,
     PuritySpringAnalyzer, MemoryEvaporationAnalyzer, CanonicalConvergenceAnalyzer,

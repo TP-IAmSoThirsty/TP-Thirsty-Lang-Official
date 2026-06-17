@@ -18,11 +18,11 @@ def run_file(file_path: str) -> None:
     Args:
         file_path: Path to the .thirstofgods file.
     """
-    from src.utf.thirsty_lang.lexer import Lexer
-    from src.utf.thirsty_lang.parser import Parser
-    from src.utf.thirsty_lang.checker import check_ast
-    from src.utf.thirsty_lang.diagnostics import DiagnosticBundle
-    from src.utf.thirst_of_gods.core import interpret_gods, ThirstOfGodsError
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
+    from utf.thirsty_lang.checker import check_ast
+    from utf.thirsty_lang.diagnostics import DiagnosticBundle
+    from utf.thirst_of_gods.core import interpret_gods, ThirstOfGodsError
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -64,9 +64,9 @@ def check_file(file_path: str) -> None:
     Args:
         file_path: Path to the .thirstofgods file.
     """
-    from src.utf.thirsty_lang.lexer import Lexer
-    from src.utf.thirsty_lang.parser import Parser
-    from src.utf.thirst_of_gods.core import to_gods, validate_deity_contract
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
+    from utf.thirst_of_gods.core import to_gods, validate_deity_contract
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -117,10 +117,10 @@ def transpile_file(file_path: str, target: str = "thirsty") -> None:
         file_path: Path to the .thirstofgods file.
         target: Target language ("thirsty" or "js").
     """
-    from src.utf.thirsty_lang.lexer import Lexer
-    from src.utf.thirsty_lang.parser import Parser
-    from src.utf.thirsty_lang.checker import check_ast
-    from src.utf.thirsty_lang.diagnostics import DiagnosticBundle
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
+    from utf.thirsty_lang.checker import check_ast
+    from utf.thirsty_lang.diagnostics import DiagnosticBundle
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -145,14 +145,14 @@ def transpile_file(file_path: str, target: str = "thirsty") -> None:
         sys.exit(1)
 
     if target == "thirsty":
-        from src.utf.thirsty_lang.formatter import format as format_ast
+        from utf.thirsty_lang.formatter import format as format_ast
         output = format_ast(ast)
         output_path = os.path.splitext(file_path)[0] + ".thirsty"
         with open(output_path, "w") as f:
             f.write(output)
         print(f"Transpiled to Thirsty-Lang: {output_path}")
     elif target == "js":
-        from src.utf.thirsty_lang.cli import _transpile_to_js
+        from utf.thirsty_lang.cli import _transpile_to_js
         js_code = _transpile_to_js(ast)
         output_path = os.path.splitext(file_path)[0] + ".js"
         with open(output_path, "w") as f:

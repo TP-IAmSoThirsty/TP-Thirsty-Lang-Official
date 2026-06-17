@@ -3,9 +3,9 @@ Thirsty-Lang — A governance-first programming language
 Part of the Universal Thirsty Family (UTF) language stack.
 """
 
-from src.utf.thirsty_lang.token import Token, TokenType, KEYWORDS
-from src.utf.thirsty_lang.lexer import Lexer
-from src.utf.thirsty_lang.ast import (
+from utf.thirsty_lang.token import Token, TokenType, KEYWORDS
+from utf.thirsty_lang.lexer import Lexer
+from utf.thirsty_lang.ast import (
     Program, ModuleHeader,
     FunctionDecl, ClassDecl, VariableDecl,
     BinaryOp, UnaryOp,
@@ -24,23 +24,23 @@ from src.utf.thirsty_lang.ast import (
     SymbolExpr, PipelineExpr, CombineExpr,
     ShadowThirstMutation,
 )
-from src.utf.thirsty_lang.parser import Parser
-from src.utf.thirsty_lang.typesys import (
+from utf.thirsty_lang.parser import Parser
+from utf.thirsty_lang.typesys import (
     Type, IntType, FloatType, BoolType, StringType, VoidType, AnyType, ErrorType,
     GenericType, QuenchedType, ReservoirType, TaskType, ResultType, GovernedType,
     EnumType, StructType, InterfaceType,
     TypeVariable, FunctionType,
     is_assignable, type_to_string, unify,
 )
-from src.utf.thirsty_lang.checker import Checker, check_ast
-from src.utf.thirsty_lang.interpreter import Interpreter, Environment
-from src.utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticBundle, DiagnosticSeverity, ERROR_CODES, format_diagnostic
-from src.utf.thirsty_lang.module_system import resolve_import, get_builtin, list_stdlib_modules, list_builtins
-from src.utf.thirsty_lang.formatter import format
-from src.utf.thirsty_lang.package_manager import PackageManager
+from utf.thirsty_lang.checker import Checker, check_ast
+from utf.thirsty_lang.interpreter import Interpreter, Environment
+from utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticBundle, DiagnosticSeverity, ERROR_CODES, format_diagnostic
+from utf.thirsty_lang.module_system import resolve_import, get_builtin, list_stdlib_modules, list_builtins
+from utf.thirsty_lang.formatter import format
+from utf.thirsty_lang.package_manager import PackageManager
 # Lazy import to avoid RuntimeWarning about sys.modules
 def main():
-    from src.utf.thirsty_lang.cli import main as _cli_main
+    from utf.thirsty_lang.cli import main as _cli_main
     return _cli_main()
 
 

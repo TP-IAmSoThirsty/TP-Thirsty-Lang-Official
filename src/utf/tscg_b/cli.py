@@ -5,7 +5,7 @@ encode/decode commands.
 import sys
 import json
 
-from src.utf.tscg_b.core import pack_text, unpack_frame, StreamDecoder
+from utf.tscg_b.core import pack_text, unpack_frame, StreamDecoder
 
 
 def cmd_encode(args: list):

@@ -7,11 +7,11 @@ src.utf.thirsty_lang.ast and provides governance interpretation.
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.utf.thirsty_lang.ast import (
+from utf.thirsty_lang.ast import (
     Program, FunctionDecl, ClassDecl, SpillageStmt, CleanupStmt,
     ThrowStmt, CascadeCall, CallExpr, Identifier,
 )
-from src.utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticSeverity
+from utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticSeverity
 
 
 class ThirstOfGodsError(Exception):
@@ -121,7 +121,7 @@ def to_gods(ast: Program) -> DeityContract:
 
 def _scan_for_cascade_and_spillage(stmt, violations: list[str]):
     """Recursively scan a statement for cascade calls inside spillage blocks."""
-    from src.utf.thirsty_lang.ast import (
+    from utf.thirsty_lang.ast import (
         BlockStmt, SpillageStmt, IfStmt, WhileStmt,
         ForStmt, ReturnStmt, ExprStmt, VariableDecl, AssignStmt,
     )
@@ -163,7 +163,7 @@ def _scan_for_cascade_and_spillage(stmt, violations: list[str]):
 
 def _scan_expr_for_cascade(expr, violations: list[str]):
     """Recursively scan expressions for cascade calls."""
-    from src.utf.thirsty_lang.ast import (
+    from utf.thirsty_lang.ast import (
         BinaryOp, UnaryOp, CallExpr, PipeExpr, GuardExpr,
         CascadeCall, FloodExpr, DripExpr,
     )
@@ -196,7 +196,7 @@ def _scan_expr_for_cascade(expr, violations: list[str]):
 def validate_deity_contract(ast: Program) -> list[Diagnostic]:
     """Validate deity contract compliance and return diagnostics.
 
-    Reuses the Diagnostic class from src.utf.thirsty_lang.diagnostics.
+    Reuses the Diagnostic class from utf.thirsty_lang.diagnostics.
     Returns diagnostics for each contract violation.
 
     Args:
@@ -260,7 +260,7 @@ def interpret_gods(ast: Program, mode: str = "gods") -> Any:
     Raises:
         ThirstOfGodsError: If the deity contract is not satisfied.
     """
-    from src.utf.thirsty_lang.interpreter import Interpreter
+    from utf.thirsty_lang.interpreter import Interpreter
 
     contract = to_gods(ast)
 

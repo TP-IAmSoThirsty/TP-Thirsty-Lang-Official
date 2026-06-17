@@ -5,11 +5,11 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.utf.thirsty_lang.token import TokenType, Token
-from src.utf.thirsty_lang.lexer import Lexer
-from src.utf.thirsty_lang.ast import *
-from src.utf.thirsty_lang.parser import Parser
-from src.utf.thirsty_lang.interpreter import Interpreter
+from utf.thirsty_lang.token import TokenType, Token
+from utf.thirsty_lang.lexer import Lexer
+from utf.thirsty_lang.ast import *
+from utf.thirsty_lang.parser import Parser
+from utf.thirsty_lang.interpreter import Interpreter
 
 
 class TestLexer:

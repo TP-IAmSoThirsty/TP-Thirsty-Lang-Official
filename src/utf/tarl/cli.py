@@ -4,7 +4,7 @@ T.A.R.L. CLI — Evaluate TARL policy files against context.
 import argparse
 import sys
 import json
-from src.utf.tarl.core import PolicyParser, evaluate_policy
+from utf.tarl.core import PolicyParser, evaluate_policy
 from tarl.spec import TarlDecision, DEFAULT_DENY
 
 

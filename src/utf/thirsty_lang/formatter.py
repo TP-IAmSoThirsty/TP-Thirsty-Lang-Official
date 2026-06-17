@@ -2,8 +2,8 @@
 Thirsty-Lang AST-based Code Formatter
 Pretty-prints Thirsty-Lang AST nodes with proper indentation and canonical style.
 """
-from src.utf.thirsty_lang.ast import *
-from src.utf.thirsty_lang.token import TokenType
+from utf.thirsty_lang.ast import *
+from utf.thirsty_lang.token import TokenType
 
 
 INDENT = "    "

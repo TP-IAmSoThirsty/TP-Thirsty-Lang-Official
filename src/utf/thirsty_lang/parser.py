@@ -3,8 +3,8 @@ Thirsty-Lang Recursive Descent Parser
 Produces an AST Program from a list of Tokens. Supports error recovery
 and "did you mean?" suggestions within edit distance 3.
 """
-from src.utf.thirsty_lang.token import Token, TokenType, KEYWORDS
-from src.utf.thirsty_lang.ast import (
+from utf.thirsty_lang.token import Token, TokenType, KEYWORDS
+from utf.thirsty_lang.ast import (
     Expr, Stmt,
     Program, ModuleHeader, FunctionDecl, ClassDecl, VariableDecl,
     BinaryOp, UnaryOp, IfStmt, WhileStmt, ForStmt, ReturnStmt,
@@ -18,7 +18,7 @@ from src.utf.thirsty_lang.ast import (
     SymbolExpr, PipelineExpr, CombineExpr, ShadowThirstMutation,
 CallExpr,
 )
-from src.utf.thirsty_lang.diagnostics import make_error, Diagnostic
+from utf.thirsty_lang.diagnostics import make_error, Diagnostic
 
 
 def _edit_distance(s1: str, s2: str) -> int:

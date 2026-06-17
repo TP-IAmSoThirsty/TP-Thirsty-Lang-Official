@@ -2,9 +2,9 @@
 Thirsty-Lang Type Checker / Semantic Analyzer
 Lexical scoping, type checking, governance validation, and error reporting.
 """
-from src.utf.thirsty_lang.ast import *
-from src.utf.thirsty_lang.typesys import *
-from src.utf.thirsty_lang.diagnostics import make_error, Diagnostic
+from utf.thirsty_lang.ast import *
+from utf.thirsty_lang.typesys import *
+from utf.thirsty_lang.diagnostics import make_error, Diagnostic
 
 
 def _edit_distance(s1: str, s2: str) -> int:

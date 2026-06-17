@@ -6,7 +6,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.utf.tscg.core import (
+from utf.tscg.core import (
     SymbolExpr, PipelineExpr, CombineExpr,
     parse, canonical_form, checksum, validate_symbols,
     SYMBOLS, EXTENDED_SYMBOLS, ALL_SYMBOLS, OPCODE_TO_SYMBOL

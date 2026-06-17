@@ -4,7 +4,7 @@ Shadow Thirst CLI — Check mutations and visualize promotion flow.
 import argparse
 import sys
 import json
-from src.utf.shadow_thirst.core import (
+from utf.shadow_thirst.core import (
     MutationParser, PromotionEngine, AnalysisLevel
 )
 
