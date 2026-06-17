@@ -221,7 +221,7 @@ lsp      → Start Language Server Protocol endpoint
 docs     → Generate API documentation
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.1.2`.
+Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.1.3`.
 
 ---
 
@@ -277,11 +277,20 @@ The test suite covers: lexer, parser, checker, interpreter, formatter, module sy
 
 ## Install
 
-```bash
-# From PyPI (version 0.1.2 — live)
-pip install thirsty-lang
+Thirsty-Lang is now available on PyPI.
 
-# From source
+**For pinned installs:**
+```bash
+pip install thirsty-lang==0.1.3
+```
+
+**For upgrade installs:**
+```bash
+pip install --upgrade thirsty-lang
+```
+
+**From source:**
+```bash
 git clone https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF.git
 cd Thirstys-Projects-Thirsty-Lang-UTF
 pip install -e .
