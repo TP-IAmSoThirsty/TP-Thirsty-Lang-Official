@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thirsty-lang"
-version = "0.1.2"
+version = "0.1.3"
 description = "A governance-first programming language family"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,7 +35,7 @@ thirst-of-gods = "utf.thirst_of_gods.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["utf.*", "utf"]
+include = ["utf.*", "utf", "thirsty_lang"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

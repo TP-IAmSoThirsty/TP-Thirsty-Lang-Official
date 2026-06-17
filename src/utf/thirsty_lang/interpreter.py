@@ -265,7 +265,7 @@ class Interpreter:
         if stmt.init_expr:
             value = self._evaluate(stmt.init_expr)
         self.env.define(stmt.name, value, is_mut=stmt.is_mut)
-        return value
+        return None  # drink is a statement, not an expression — no value propagation
 
     def _execute_assign(self, stmt: AssignStmt) -> object:
         value = self._evaluate(stmt.value)
@@ -320,7 +320,7 @@ class Interpreter:
             print(value)
         else:
             print(value)
-        return value
+        return None  # pour handles its own output — no value propagation
 
     def _execute_sip(self, stmt: SipStmt) -> object:
         value = input()
