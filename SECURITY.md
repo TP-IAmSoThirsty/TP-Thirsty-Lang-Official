@@ -17,11 +17,9 @@ If you discover a security vulnerability in Thirsty-Lang, please report it priva
 
 ### How to Report
 
-**Do not report security vulnerabilities through public GitHub issues.**
+**Do not report security vulnerabilities through public channels.**
 
-Instead, please send a detailed report to the Thirsty's Projects LLC security team via:
-- **Email**: security@thirsty-lang.dev (coming soon)
-- **GitHub Security Advisory**: https://github.com/thirstysprojects/thirsty-lang/security/advisories (when enabled)
+Send a detailed report to FounderOfTP@thirstysprojects.com.
 
 ### What to Include
 

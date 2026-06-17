@@ -210,8 +210,23 @@ class Parser:
             return self._parse_shadow_thirst_mutation()
         elif t == TokenType.SYMBOL:
             return self._parse_tscg_symbol()
+        elif t == TokenType.PIPE:
+            return self._parse_pipe_block_stmt()
         else:
             return self._parse_expr_statement()
+
+    def _parse_pipe_block_stmt(self) -> ExprStmt:
+        """Parse | [>] expression — pipe block statement.
+
+        At statement level, pipes a value through a pipeline expression.
+        The pipe symbol introduces an expression that may contain further
+        infix pipe operators (| for PipeExpr).
+        """
+        start = self._advance()  # consume PIPE
+        self._match(TokenType.GT)  # optional > for |>
+        expr = self._parse_expr()
+        self._expect(TokenType.SEMICOLON, "E901", detail="Expected ';' after pipe expression")
+        return ExprStmt(expr=expr, span=self._span(start))
 
     def _parse_block(self) -> BlockStmt:
         start = self._advance()  # consume {
@@ -275,7 +290,7 @@ class Parser:
         start = self._advance()  # refill
         self._expect(TokenType.LPAREN, "E901", detail="Expected '(' after 'refill'")
         # Try to detect for-loop: refill(var in iterable)
-        if self._check(TokenType.IDENTIFIER) and hasattr(TokenType, 'IN') and self._peek_next(1).type == TokenType.IN:
+        if self._check(TokenType.IDENTIFIER) and self._peek_next(1).type == TokenType.IN:
             var_token = self._advance()
             self._advance()  # in
             iterable = self._parse_expr()

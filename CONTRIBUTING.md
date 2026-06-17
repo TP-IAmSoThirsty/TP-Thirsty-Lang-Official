@@ -11,14 +11,13 @@ When contributing, please:
 - Provide constructive feedback
 - Focus on what is best for the community and the project
 - Show empathy towards other community members
-
 ## How to Contribute
 
 ### Reporting Issues
 
-If you find a bug or have a feature request, please open an issue on GitHub at https://github.com/thirstysprojects/thirsty-lang/issues.
+If you find a bug or have a feature request, please email FounderOfTP@thirstysprojects.com with full details.
 
-When reporting a bug, please include:
+When reporting, please include:
 - A clear description of the issue
 - Steps to reproduce
 - Expected behavior vs actual behavior
@@ -39,13 +38,14 @@ When reporting a bug, please include:
 
 ```bash
 # Clone the repository
-git clone https://github.com/thirstysprojects/thirsty-lang.git
-cd thirsty-lang
+git clone https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF.git
+cd Thirstys-Projects-Thirsty-Lang-UTF
 
 # Install in development mode
 pip install -e .
+```
 
-# Run tests
+### Code Standards
 python -m pytest tests/ -v
 ```
 
@@ -75,7 +75,7 @@ Thirsty-Lang follows a default-DENY governance model. All changes are reviewed f
 
 ## Questions?
 
-If you have questions about contributing, please open a discussion on GitHub.
+If you have questions about contributing, please email FounderOfTP@thirstysprojects.com.
 
 ---
 

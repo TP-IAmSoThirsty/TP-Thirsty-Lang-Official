@@ -1,7 +1,3 @@
-"""
-Thirsty-Lang Token Definitions
-All keyword tokens, operators, literals, and delimiters.
-"""
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -31,7 +27,8 @@ class TokenType(Enum):
     QUENCHED = auto()
     EMPTY = auto()
     MUT = auto()
-
+    IN = auto()
+    
     # --- Module Keywords ---
     IMPORT = auto()
     FROM = auto()
@@ -158,6 +155,7 @@ KEYWORDS = {
     "quenched": TokenType.QUENCHED,
     "empty": TokenType.EMPTY,
     "mut": TokenType.MUT,
+    "in": TokenType.IN,
     "import": TokenType.IMPORT,
     "from": TokenType.FROM,
     "as": TokenType.AS,
@@ -180,9 +178,9 @@ KEYWORDS = {
     "throw": TokenType.THROW,
     "policy": TokenType.POLICY,
     "when": TokenType.WHEN,
-    "ALLOW": TokenType.ALLOW,
-    "DENY": TokenType.DENY,
-    "ESCALATE": TokenType.ESCALATE,
+    "allow": TokenType.ALLOW,
+    "deny": TokenType.DENY,
+    "escalate": TokenType.ESCALATE,
     "mutation": TokenType.MUTATION,
     "validated_canonical": TokenType.VALIDATED_CANONICAL,
     "invariant": TokenType.INVARIANT,
@@ -191,10 +189,10 @@ KEYWORDS = {
     "promote": TokenType.PROMOTE,
     "reject": TokenType.REJECT,
     "governed": TokenType.GOVERNED,
-"enum": TokenType.ENUM,
-"struct": TokenType.STRUCT,
-"interface": TokenType.INTERFACE,
-"symbol": TokenType.SYMBOL,
+    "enum": TokenType.ENUM,
+    "struct": TokenType.STRUCT,
+    "interface": TokenType.INTERFACE,
+    "symbol": TokenType.SYMBOL,
     "module": TokenType.MODULE,
     "core": TokenType.CORE,
     "and": TokenType.AND,

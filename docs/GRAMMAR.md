@@ -1,0 +1,306 @@
+# Thirsty-Lang Grammar (Tier 1)
+
+An EBNF-style formal grammar for the Thirsty-Lang programming language (core tier).  
+This doc covers lexical grammar, program structure, types, expressions, statements, and declarations.
+
+---
+
+## Notation
+
+- `"…"` — literal keyword or symbol
+- `'…'` — literal character or token
+- `( … )` — grouping
+- `[ … ]` — optional
+- `{ … }` — zero or more repetitions
+- `… | …` — alternation
+- `/* … */` — semantic comment
+
+---
+
+## 1. Lexical Grammar
+
+```
+letter         = "A".."Z" | "a".."z" ;
+digit          = "0".."9" ;
+hex_digit      = digit | "a".."f" | "A".."F" ;
+ident_char     = letter | digit | "_" | "." ;
+
+identifier     = ( letter | "_" ) { ident_char } ;
+
+integer        = digit { digit }
+               | "0x" hex_digit { hex_digit }
+               | "0b" ("0" | "1") { ("0" | "1") } ;
+
+float          = digit { digit } "." digit { digit } [ ("e" | "E") ["+" | "-"] digit { digit } ] ;
+
+string         = '"' { char | escape } '"' ;
+escape         = "\\" ( "n" | "t" | "r" | "0" | "\\" | '"' | "x" hex_digit hex_digit ) ;
+
+comment        = "//" { char } newline
+               | "/*" { char } "*/" ;
+
+newline        = '\n' ;
+whitespace     = ' ' | '\t' | '\r' | newline ;
+```
+
+---
+
+## 2. Program Structure
+
+```
+program        = module_header { import_stmt } { declaration } EOF ;
+
+module_header  = ["thirsty"] [module_mode] ";"
+               | "thirst" string ";"
+               | ";" ;
+
+module_mode    = "core" | "strict" | "pure" ;
+
+import_stmt    = "import" path ";" ;
+
+path           = identifier { "." identifier } ;
+```
+
+---
+
+## 3. Types
+
+```
+type           = simple_type | function_type | tuple_type | "any" | "never" ;
+
+simple_type    = "int" | "float" | "str" | "bool" | "void"
+               | identifier          /* user-defined types */ ;
+
+function_type  = "(" [type { "," type }] ")" "->" type ;
+
+tuple_type     = "(" type { "," type } ")" ;
+```
+
+---
+
+## 4. Expressions
+
+Expressions are listed in order of **increasing precedence** (lowest first).
+
+```
+expr           = assignment ;
+
+assignment     = pipeline ( ":=" | "=" ) expr       /* if LHS is assignable */
+               | pipeline ;
+
+pipeline       = pipe { "|" pipe } ;
+
+pipe           = combine { "|>" combine } ;
+
+combine        = logical_or { "||" logical_or } ;
+
+logical_or     = logical_and { "or" logical_and } ;
+
+logical_and    = equality { "and" equality } ;
+
+equality       = comparison { ("==" | "!=") comparison } ;
+
+comparison     = term { ("<" | ">" | "<=" | ">=") term } ;
+
+term           = factor { ("+" | "-") factor } ;
+
+factor         = unary { ("*" | "/" | "%") unary } ;
+
+unary          = ("+" | "-" | "!") unary
+               | call ;
+
+call           = primary { "(" [expr { "," expr }] ")"       /* function call */
+                         | "." identifier                     /* member access */
+                         | "[" expr "]" } ;                   /* subscript */
+
+primary        = literal
+               | identifier
+               | "(" expr ")"
+               | string_expr
+               | array_literal
+               | struct_literal ;
+
+literal        = integer
+               | float
+               | "true" | "false"
+               | "null"
+               | "quenched"
+               | "thirsty_error" ;
+
+string_expr    = string { string } ;                /* concatenation */
+
+array_literal  = "[" [expr { "," expr }] "]" ;
+
+struct_literal = identifier "{" [field_init { "," field_init }] "}" ;
+
+field_init     = identifier "=" expr ;
+```
+
+---
+
+## 5. Statements
+
+```
+stmt           = variable_decl
+               | pour_stmt
+               | sip_stmt
+               | assign_stmt
+               | if_stmt
+               | refill_stmt
+               | return_stmt
+               | import_stmt
+               | block
+               | pipe_block_stmt
+               | expr_stmt
+               | ";" ;
+
+variable_decl  = "drink" identifier [":" type] [ "=" expr ] ";" ;
+
+pour_stmt      = "pour" expr ";" ;
+
+sip_stmt       = "sip" identifier [ "=" expr ] ";" ;
+
+assign_stmt    = expr ":=" expr ";" ;
+
+if_stmt        = "thirsty" "(" expr ")" block
+                 { "hydrated" "thirsty" "(" expr ")" block }
+                 [ "hydrated" block ] ;
+
+refill_stmt    = "refill" "(" identifier "in" expr ")" block    /* for-loop */
+               | "refill" "(" expr ")" block ;                  /* while-loop */
+
+return_stmt    = "return" [expr] ";" ;
+
+block          = "{" { stmt } "}" ;
+
+pipe_block_stmt = "|" [">"] expr ";" ;
+
+expr_stmt      = expr ";" ;
+```
+
+---
+
+## 6. Declarations
+
+```
+declaration    = function_decl
+               | class_decl
+               | spillage_decl
+               | cleanup_decl
+               | enum_decl
+               | struct_decl
+               | interface_decl
+               | morph_def
+               | security_block
+               | cascade_call
+               | mutation
+               | symbol ;
+
+function_decl  = "glass" identifier "(" [param { "," param }] ")" [":" type] block ;
+
+param          = identifier ":" type ;
+
+class_decl     = "fountain" identifier
+                 [ ":" type_list ]                    /* mixins / interfaces */
+                 "{" { class_member } "}" ;
+
+class_member   = function_decl
+               | variable_decl
+               | "init" "(" [param { "," param }] ")" block ;
+
+spillage_decl  = "spillage" identifier
+                 [ "(" param ")" ]
+                 "{" { handler } "}" ;
+
+handler        = "cascade" identifier block
+               | "converge" identifier block
+               | "deflect" identifier block ;
+
+cleanup_decl   = "cleanup" identifier
+                 "(" [param] ")"
+                 block
+                 [ "->" block ] ;                    /* finalizer */
+
+enum_decl      = "enum" identifier "{" enum_variant { "," enum_variant } "}" ;
+
+enum_variant   = identifier [ "(" type { "," type } ")" ] ;
+
+struct_decl    = "struct" identifier "{" struct_field { "," struct_field } "}" ;
+
+struct_field   = identifier ":" type ;
+
+interface_decl = "interface" identifier "{" interface_sig { ";" interface_sig } "}" ;
+
+interface_sig  = identifier "(" [type { "," type }] ")" [":" type] ;
+
+morph_def      = "morph" identifier "(" identifier ":" type ")" "->" type block ;
+
+security_block = "shield" "(" expr ")" block
+               | "detect" "(" expr ")" block ;
+
+defend_strat   = "defend" identifier "(" expr ")" block ;
+
+cascade_call   = "cascade" identifier "(" expr ")" ";" ;
+
+mutation       = "mutation" identifier "(" expr ")" block ;
+
+symbol         = "symbol" identifier "=" expr ";" ;
+
+new_expr       = "new" identifier "(" [expr { "," expr }] ")" ;   /* class instantiation */
+```
+
+---
+
+## 7. Patterns
+
+```
+pattern        = wildcard_pattern | bind_pattern | literal_pattern | tuple_pattern ;
+
+wildcard_pattern = "_" ;
+
+bind_pattern   = identifier ;
+
+literal_pattern = integer | float | string | "true" | "false" | "null" ;
+
+tuple_pattern  = "(" [pattern { "," pattern }] ")" ;
+```
+
+*(Patterns appear in guard/thirsty expressions and cascade handlers.)*
+
+---
+
+## 8. Precedence Table
+
+| Level | Operators | Associativity |
+|-------|-----------|---------------|
+| 1 (lowest) | `:=` `=` | right |
+| 2 | `\|\|` | left |
+| 3 | `or` | left |
+| 4 | `and` | left |
+| 5 | `==` `!=` | left |
+| 6 | `<` `>` `<=` `>=` | left |
+| 7 | `+` `-` | left |
+| 8 | `*` `/` `%` | left |
+| 9 | unary `+` `-` `!` | right |
+| 10 | `(…)` `.` `[…]` | left |
+| 11 (highest) | primary | — |
+
+---
+
+## 9. Keywords
+
+```
+drink, pour, sip, thirst, thirsty, hydrated, refill, return, spillage,
+cleanup, throw, shield, sanitize, armor, morph, detect, defend, cascade,
+converge, deflect, import, glass, fountain, init, new, enum, struct,
+interface, mutation, symbol, in, true, false, null, quenched, thirsty_error,
+any, never, intent, invariant, and, or, core, strict, pure
+```
+
+---
+
+## 10. Comments & Whitespace
+
+- **Comments**: `//` line comments and `/* … */` block comments (can nest).
+- **Whitespace**: spaces, tabs, newlines — ignored except as token separators.
+- **Semicolons**: required as statement terminators; no automatic semicolon insertion.
