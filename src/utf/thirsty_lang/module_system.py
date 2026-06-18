@@ -573,14 +573,68 @@ BUILTINS = {
 
 
 # ============================================================
+# Lockfile-aware Module Resolution
+# ============================================================
+
+def load_lockfile(cwd: str = ".") -> dict:
+    """
+    Load and parse thirsty.lock from the given directory.
+    Returns the lockfile dict, or an empty dict if not found.
+    """
+    lock_path = os.path.join(cwd, "thirsty.lock")
+    if not os.path.exists(lock_path):
+        return {}
+    try:
+        with open(lock_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def check_lock_integrity(dep_name: str, dep_version: str, lock: dict) -> bool:
+    """
+    Verify that a dependency (name@version) exists in the lockfile.
+    Returns True if the dependency is found in the lockfile.
+    If version is '*' or empty, matches any version of the dependency.
+    """
+    deps = lock.get("dependencies", {})
+    if dep_name in deps:
+        locked_entry = deps[dep_name]
+        locked_version = locked_entry.get("version", "")
+        if dep_version in ("*", "") or locked_version == dep_version:
+            return True
+    return False
+
+
+# ============================================================
 # Public API
 # ============================================================
 
-def resolve_import(path_str: str) -> object:
+def resolve_import(path_str: str, locked: bool = False) -> object:
     """
     Resolve an import path string to a module object.
     Handles 'thirst::module' syntax for stdlib modules.
+    When locked=True, verifies the dependency exists in thirsty.lock
+    before resolving.
     """
+    # When locked, load and verify against lockfile
+    if locked:
+        lock = load_lockfile(".")
+        if not lock or "dependencies" not in lock or not lock["dependencies"]:
+            raise ImportError(
+                f"Lockfile check failed: thirsty.lock not found or empty. "
+                f"Run 'thirsty lock' first to generate it."
+            )
+        # Extract dependency name from path_str (e.g. "thirst::crypto" -> "crypto")
+        dep_name = path_str
+        if path_str.startswith("thirst::"):
+            dep_name = path_str[len("thirst::"):]
+        if not check_lock_integrity(dep_name, "*", lock):
+            raise ImportError(
+                f"Lockfile integrity check failed: '{dep_name}' not found in thirsty.lock. "
+                f"Run 'thirsty add {dep_name}' to add it."
+            )
+
     # Check cache first
     if path_str in ModuleCache:
         return ModuleCache[path_str]

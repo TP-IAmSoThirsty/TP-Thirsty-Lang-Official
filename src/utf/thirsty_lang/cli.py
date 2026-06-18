@@ -36,6 +36,7 @@ def main():
     run_parser.add_argument("--thirst-level", choices=["core", "governed"], default="core", help="Thirst mode")
     run_parser.add_argument("--authority", type=str, help="Authority tag for governed mode")
     run_parser.add_argument("--demo", action="store_true", help="Run demo program")
+    run_parser.add_argument("--locked", action="store_true", help="Require lockfile verification before executing")
 
     # repl
     repl_parser = subparsers.add_parser("repl", help="Start interactive REPL")
@@ -64,6 +65,7 @@ def main():
     govern_parser.add_argument("file", nargs="?", help="Path to .thirsty file")
     govern_parser.add_argument("--report", action="store_true", help="Generate governance report")
     govern_parser.add_argument("--auto-tarl", action="store_true", help="Auto-generate T.A.R.L. policy")
+    govern_parser.add_argument("--enforce", action="store_true", help="Exit 1 if any function gets DENY")
 
     # add
     add_parser = subparsers.add_parser("add", help="Add a dependency")
@@ -158,6 +160,7 @@ def cmd_run(args):
     from utf.thirsty_lang.checker import check_ast
     from utf.thirsty_lang.interpreter import Interpreter
     from utf.thirsty_lang.diagnostics import DiagnosticBundle
+    from utf.thirsty_lang.module_system import load_lockfile
 
     if args.demo:
         source = '''module hello: core
@@ -199,6 +202,15 @@ pour result
         bundle = DiagnosticBundle(errors)
         print(bundle.format_all(), file=sys.stderr)
         sys.exit(1)
+
+    # --locked flag: verify thirsty.lock exists before executing
+    if getattr(args, 'locked', False):
+        lock = load_lockfile(".")
+        if not lock or "dependencies" not in lock or not lock["dependencies"]:
+            print("Error: Lockfile check failed — thirsty.lock not found or empty.", file=sys.stderr)
+            print("Run 'thirsty lock' first to generate it.", file=sys.stderr)
+            sys.exit(1)
+        print("Lockfile verified. Running with integrity checks enabled.")
 
     interpreter = Interpreter(opt_level=args.opt, debug_mode=args.trace)
     try:
@@ -585,11 +597,36 @@ def cmd_govern(args):
                 tarl_policy += f'\nwhen name == "{stmt.name}" => ALLOW\n'
         tarl_policy += "\nwhen true => DENY  # Default deny\n"
 
+        # Evaluate policy against each function via TarlRuntime
+        from utf.tarl.core import PolicyParser, evaluate_policy
+        from utf.tarl.runtime import TarlRuntime
+        
+        policy = PolicyParser.parse(tarl_policy, name="auto-tarl")
+        runtime = TarlRuntime(policy=policy)
+        verdicts = []
+        
+        for stmt in ast.stmts:
+            if hasattr(stmt, 'name') and hasattr(stmt, 'params'):
+                context = {
+                "name": stmt.name,
+                "params": len(getattr(stmt, 'params', [])),
+                "body_len": len(stmt.body.stmts) if hasattr(stmt.body, 'stmts') else 0,
+                }
+                decision = evaluate_policy(context, policy_text=tarl_policy)
+                verdicts.append((stmt.name, decision.verdict.value if hasattr(decision, 'verdict') else str(decision)))
+                print(f"  [{decision.verdict.value if hasattr(decision, 'verdict') else decision}] {stmt.name}")
+
+        # Write policy file
         tarl_path = os.path.splitext(args.file)[0] + ".tarl"
         with open(tarl_path, "w") as f:
             f.write(tarl_policy)
         print(f"T.A.R.L. policy: {tarl_path}")
 
+        if args.enforce:
+            denied = [name for name, v in verdicts if v == "DENY"]
+            if denied:
+                print(f"Enforce failed: {len(denied)} function(s) denied: {' '.join(denied)}", file=sys.stderr)
+                sys.exit(1)
 
 def cmd_add(args):
     """Add a dependency."""

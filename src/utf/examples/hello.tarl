@@ -1,0 +1,7 @@
+# Auto-generated T.A.R.L. Policy
+
+when name == "greet" => ALLOW
+
+when name == "main" => ALLOW
+
+when true => DENY  # Default deny

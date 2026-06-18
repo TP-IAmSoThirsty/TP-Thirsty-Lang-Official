@@ -35,12 +35,18 @@ class TokenType(Enum):
     AS = auto()
 
     # --- Security Keywords ---
-    SHIELD = auto()
-    SANITIZE = auto()
-    ARMOR = auto()
-    MORPH = auto()
-    DETECT = auto()
-    DEFEND = auto()
+    # ── Reserved Security Tokens (Tier 5/6 — TSCG / TSCG-B) ──
+    # These keywords are syntactically parsed but not semantically
+    # enforced in Thirsty-Lang core (Tier 1). They are reserved for
+    # use by Shadow Thirst / TSCG governance transformers at higher
+    # tiers. See tarl/spec.py for T.A.R.L. policy definitions and
+    # docs/governance_model.md for the tier escalation model.
+    SHIELD = auto()      # identity/access context barrier
+    SANITIZE = auto()    # data scrubbing annotation
+    ARMOR = auto()       # runtime safety wrap
+    MORPH = auto()       # type coercion boundary
+    DETECT = auto()      # anomaly tap point
+    DEFEND = auto()      # invariant enforcement hook
 
     # --- Thirst of Gods Keywords ---
     CASCADE = auto()

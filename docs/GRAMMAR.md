@@ -1,5 +1,24 @@
 # Thirsty-Lang Grammar (Tier 1)
 
+## Reserved Keywords (Higher Tiers)
+
+The following keywords are syntactically reserved for Tiers 5/6 (TSCG / TSCG-B)
+and produce no runtime effect in Thirsty-Lang core. They exist in the lexer
+for upward compatibility only.
+
+```
+shield     — identity/access context barrier
+sanitize   — data scrubbing annotation
+armor      — runtime safety wrap
+morph      — type coercion boundary
+detect     — anomaly tap point
+defend     — invariant enforcement hook
+```
+
+See `docs/governance_model.md` for the tier escalation model.
+
+---
+
 An EBNF-style formal grammar for the Thirsty-Lang programming language (core tier).  
 This doc covers lexical grammar, program structure, types, expressions, statements, and declarations.
 

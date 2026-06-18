@@ -221,7 +221,7 @@ lsp      → Start Language Server Protocol endpoint
 docs     → Generate API documentation
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.1.3`.
+Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.1.4`.
 
 ---
 
@@ -281,7 +281,7 @@ Thirsty-Lang is now available on PyPI.
 
 **For pinned installs:**
 ```bash
-pip install thirsty-lang==0.1.3
+pip install thirsty-lang==0.1.4
 ```
 
 **For upgrade installs:**
