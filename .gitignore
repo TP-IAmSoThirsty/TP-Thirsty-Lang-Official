@@ -23,6 +23,21 @@ Thumbs.db
 # Build
 build/
 *.manifest
+*.egg
+.eggs/
+
+# Test & Coverage
+.tox/
+htmlcov/
+.coverage
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # Logs
 *.log
+
+# IDE
+.github/instructions/codacy.instructions.md
