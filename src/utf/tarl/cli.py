@@ -5,7 +5,7 @@ import argparse
 import sys
 import json
 from utf.tarl.core import PolicyParser, evaluate_policy
-from tarl.spec import TarlDecision, DEFAULT_DENY
+from utf.tarl.spec import TarlDecision, DEFAULT_DENY
 
 
 def main():

@@ -14,7 +14,7 @@ def cmd_encode(args: list):
         text = sys.stdin.read().strip()
     else:
         text = ' '.join(args)
-    
+
     frame = pack_text(text)
     sys.stdout.buffer.write(frame)
 
@@ -25,7 +25,7 @@ def cmd_decode(args: list):
         data = bytes.fromhex(args[0])
     else:
         data = sys.stdin.buffer.read()
-    
+
     result = unpack_frame(data)
     output = {
         'text': result['text'],
@@ -44,10 +44,10 @@ def cmd_stream(args: list):
         data = bytes.fromhex(args[0])
     else:
         data = sys.stdin.buffer.read()
-    
+
     decoder = StreamDecoder()
     frames = decoder.feed(data)
-    
+
     results = []
     for f in frames:
         results.append({
@@ -56,29 +56,37 @@ def cmd_stream(args: list):
             'crc32': f['crc32_hex'],
             'sha256': f['sha256_hex'],
         })
-    
+
     print(json.dumps(results, indent=2))
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python -m src.utf.tscg_b.cli <encode|decode|stream> [args...]")
+        print("Usage: tscg-b <encode|decode|stream> [args...]")
         sys.exit(1)
-    
+
+    if sys.argv[1] in ('--help', '-h'):
+        print("Usage: tscg-b <encode|decode|stream> [args...]")
+        print("  encode [text...]  - Encode text into TSCG-B binary frame")
+        print("  decode [hex]      - Decode TSCG-B binary frame from hex"
+              " or stdin")
+        print("  stream [hex]      - Decode a stream of TSCG-B frames")
+        sys.exit(0)
+
     cmd = sys.argv[1]
     args = sys.argv[2:]
-    
+
     commands = {
         'encode': cmd_encode,
         'decode': cmd_decode,
         'stream': cmd_stream,
     }
-    
+
     if cmd not in commands:
         print(f"Unknown command: {cmd}")
         print("Available: encode, decode, stream")
         sys.exit(1)
-    
+
     try:
         commands[cmd](args)
     except Exception as e:

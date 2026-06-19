@@ -3,7 +3,7 @@ T.A.R.L. Core — Policy Parser and SafeExpr Sandboxed Evaluator
 Parses `when <expr> => VERDICT` rules and evaluates them safely.
 """
 import re
-from tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
+from utf.tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
 
 
 # Token types for the simple expression language

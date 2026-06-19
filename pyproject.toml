@@ -32,6 +32,10 @@ classifiers = [
 [project.scripts]
 thirsty = "utf.thirsty_lang.cli:main"
 thirst-of-gods = "utf.thirst_of_gods.cli:main"
+tscg = "utf.tscg.cli:main"
+tscg-b = "utf.tscg_b.cli:main"
+tarl = "utf.tarl.cli:main"
+shadow-thirst = "utf.shadow_thirst.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

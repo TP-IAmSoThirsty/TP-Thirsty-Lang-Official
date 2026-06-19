@@ -4,7 +4,7 @@ T.A.R.L. Runtime — LRU-cached, parallel policy evaluation with adaptive orderi
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict
 from typing import Optional
-from tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
+from utf.tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
 from utf.tarl.core import SafeExpr, PolicyParser, evaluate_policy
 
 
