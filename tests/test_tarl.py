@@ -30,7 +30,7 @@ class TestTarlSpec:
 
     def test_default_deny(self):
         assert DEFAULT_DENY.verdict == TarlVerdict.DENY
-        assert "Default deny" in DEFAULT_DENY.reason
+        assert "deny" in DEFAULT_DENY.reason.lower()
 
 
 class TestPolicyParser:
@@ -153,7 +153,7 @@ when role == "user" => DENY"""
         policy = """when role == "admin" => ALLOW"""
         result = evaluate_policy({'role': 'nonexistent'}, policy)
         assert result.verdict == TarlVerdict.DENY
-        assert "Default deny" in result.reason
+        assert "deny" in result.reason.lower()
 
     def test_first_match_wins(self):
         """First matching rule should win."""

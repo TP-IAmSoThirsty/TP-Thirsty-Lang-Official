@@ -1,172 +1,334 @@
 """
-T.A.R.L. Core — Policy Parser and SafeExpr Sandboxed Evaluator
-Parses `when <expr> => VERDICT` rules and evaluates them safely.
+T.A.R.L. Core — Phase 1: Condition Algebra
+
+SafeExpr now supports:
+  - Nested attribute access: user.role.clearance
+  - Full arithmetic: +, -, *, /, %
+  - Set membership: value IN [...] / NOT IN [...]
+  - Dynamic sources: source:name (resolved by TarlRuntime)
+  - Temporal builtins: CURRENT_HOUR, CURRENT_DAY, CURRENT_WEEKDAY, etc.
+  - String predicates: MATCHES, STARTS_WITH, ENDS_WITH, CONTAINS
+  - Utility functions: LEN, LOWER, UPPER, ELAPSED_SINCE
+  - Universal/existential quantifiers: ALL(col, v -> cond), ANY(col, v -> cond)
 """
 import re
-from utf.tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
+import datetime
+from utf.tarl.spec import (
+    TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
+)
 
+# ── Token types ──────────────────────────────────────────────────────────────
+INT = "INT"
+FLOAT = "FLOAT"
+STRING = "STRING"
+BOOL_TRUE = "BOOL_TRUE"
+BOOL_FALSE = "BOOL_FALSE"
+IDENT = "IDENT"
+SOURCE = "SOURCE"       # source:name — resolved by runtime
+# Arithmetic
+PLUS = "PLUS"
+MINUS = "MINUS"
+STAR = "STAR"
+SLASH = "SLASH"
+PERCENT = "PERCENT"
+# Comparisons
+EQEQ = "EQEQ"
+NE = "NE"
+LT = "LT"
+GT = "GT"
+LE = "LE"
+GE = "GE"
+# Logic
+AND = "AND"
+OR = "OR"
+NOT = "NOT"
+IN = "IN"
+# Structure
+DOT = "DOT"
+COMMA = "COMMA"
+ARROW = "ARROW"         # ->
+LBRACKET = "LBRACKET"
+RBRACKET = "RBRACKET"
+LPAREN = "LPAREN"
+RPAREN = "RPAREN"
+EOF = "EOF"
 
-# Token types for the simple expression language
-INT = 'INT'
-FLOAT = 'FLOAT'
-STRING = 'STRING'
-BOOL_TRUE = 'BOOL_TRUE'
-BOOL_FALSE = 'BOOL_FALSE'
-IDENT = 'IDENT'
-PLUS = 'PLUS'
-EQEQ = 'EQEQ'
-NE = 'NE'
-LT = 'LT'
-GT = 'GT'
-LE = 'LE'
-GE = 'GE'
-AND = 'AND'
-OR = 'OR'
-NOT = 'NOT'
-LPAREN = 'LPAREN'
-RPAREN = 'RPAREN'
-EOF = 'EOF'
+_KEYWORDS = {
+    "and": AND, "or": OR, "not": NOT, "in": IN,
+    "true": BOOL_TRUE, "false": BOOL_FALSE,
+}
+
+_TEMPORAL_BUILTINS = frozenset({
+    "CURRENT_HOUR", "CURRENT_DAY", "CURRENT_WEEKDAY",
+    "CURRENT_MONTH", "CURRENT_YEAR", "CURRENT_TIMESTAMP",
+})
+
+_SAFE_FUNCTIONS = frozenset({
+    "MATCHES", "STARTS_WITH", "ENDS_WITH", "CONTAINS",
+    "ELAPSED_SINCE", "LEN", "LOWER", "UPPER",
+})
+
+_QUANTIFIERS = frozenset({"ALL", "ANY"})
 
 
 class ExprToken:
-    __slots__ = ('type', 'value', 'pos')
+    __slots__ = ("type", "value", "pos")
 
-    def __init__(self, type, value, pos=0):
+    def __init__(self, type: str, value, pos: int = 0):
         self.type = type
         self.value = value
         self.pos = pos
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"ExprToken({self.type}, {self.value!r})"
 
 
 class PolicyParser:
     """Parses TARL policy text into TarlPolicy objects."""
 
-    RULE_RE = re.compile(r'when\s+(.+?)\s*=>\s*(ALLOW|DENY|ESCALATE)\s*')
+    RULE_RE = re.compile(
+        r"when\s+(.+?)\s*=>\s*(ALLOW|DENY|ESCALATE)\s*"
+    )
 
     @classmethod
     def parse(cls, text: str, name: str = "unnamed") -> TarlPolicy:
-        """Parse TARL policy text into a TarlPolicy."""
         policy = TarlPolicy(source=text, name=name)
-        lines = text.split('\n')
-        for i, line in enumerate(lines):
+        for i, line in enumerate(text.split("\n")):
             stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
+            if not stripped or stripped.startswith("#"):
                 continue
-            if stripped.startswith('policy'):
+            if stripped.startswith("policy"):
                 parts = stripped.split()
                 if len(parts) > 1:
-                    policy.name = parts[1]
+                    policy.name = parts[1].rstrip(":")
                 continue
-            match = cls.RULE_RE.match(stripped)
-            if match:
-                condition = match.group(1).strip()
-                verdict_str = match.group(2).upper()
-                verdict = TarlVerdict(verdict_str)
-                rule = TarlRule(condition=condition, verdict=verdict, source_line=i + 1)
-                policy.rules.append(rule)
+            m = cls.RULE_RE.match(stripped)
+            if m:
+                condition = m.group(1).strip()
+                verdict = TarlVerdict(m.group(2).upper())
+                policy.rules.append(TarlRule(
+                    condition=condition,
+                    verdict=verdict,
+                    source_line=i + 1,
+                ))
         return policy
 
     @staticmethod
     def _tokenize(expr: str) -> list:
-        """Tokenize a condition expression string."""
         tokens = []
         i = 0
-        while i < len(expr):
+        n = len(expr)
+        while i < n:
             c = expr[i]
-            if c in ' \t':
+
+            # Whitespace
+            if c in " \t":
                 i += 1
                 continue
-            if c == '(':
-                tokens.append(ExprToken(LPAREN, '(', i))
+
+            # Parentheses, brackets, comma
+            if c == "(":
+                tokens.append(ExprToken(LPAREN, "(", i))
                 i += 1
-            elif c == ')':
-                tokens.append(ExprToken(RPAREN, ')', i))
+            elif c == ")":
+                tokens.append(ExprToken(RPAREN, ")", i))
                 i += 1
-            elif c == '=' and i + 1 < len(expr) and expr[i + 1] == '=':
-                tokens.append(ExprToken(EQEQ, '==', i))
+            elif c == "[":
+                tokens.append(ExprToken(LBRACKET, "[", i))
+                i += 1
+            elif c == "]":
+                tokens.append(ExprToken(RBRACKET, "]", i))
+                i += 1
+            elif c == ",":
+                tokens.append(ExprToken(COMMA, ",", i))
+                i += 1
+            elif c == ".":
+                tokens.append(ExprToken(DOT, ".", i))
+                i += 1
+
+            # Two-char operators
+            elif c == "=" and i + 1 < n and expr[i + 1] == "=":
+                tokens.append(ExprToken(EQEQ, "==", i))
                 i += 2
-            elif c == '!' and i + 1 < len(expr) and expr[i + 1] == '=':
-                tokens.append(ExprToken(NE, '!=', i))
+            elif c == "!" and i + 1 < n and expr[i + 1] == "=":
+                tokens.append(ExprToken(NE, "!=", i))
                 i += 2
-            elif c == '<' and i + 1 < len(expr) and expr[i + 1] == '=':
-                tokens.append(ExprToken(LE, '<=', i))
+            elif c == "<" and i + 1 < n and expr[i + 1] == "=":
+                tokens.append(ExprToken(LE, "<=", i))
                 i += 2
-            elif c == '<':
-                tokens.append(ExprToken(LT, '<', i))
-                i += 1
-            elif c == '>' and i + 1 < len(expr) and expr[i + 1] == '=':
-                tokens.append(ExprToken(GE, '>=', i))
+            elif c == ">" and i + 1 < n and expr[i + 1] == "=":
+                tokens.append(ExprToken(GE, ">=", i))
                 i += 2
-            elif c == '>':
-                tokens.append(ExprToken(GT, '>', i))
+            elif c == "-" and i + 1 < n and expr[i + 1] == ">":
+                tokens.append(ExprToken(ARROW, "->", i))
+                i += 2
+
+            # Single-char comparison / arithmetic
+            elif c == "<":
+                tokens.append(ExprToken(LT, "<", i))
                 i += 1
-            elif c == '+':
-                tokens.append(ExprToken(PLUS, '+', i))
+            elif c == ">":
+                tokens.append(ExprToken(GT, ">", i))
                 i += 1
+            elif c == "+":
+                tokens.append(ExprToken(PLUS, "+", i))
+                i += 1
+            elif c == "*":
+                tokens.append(ExprToken(STAR, "*", i))
+                i += 1
+            elif c == "/":
+                tokens.append(ExprToken(SLASH, "/", i))
+                i += 1
+            elif c == "%":
+                tokens.append(ExprToken(PERCENT, "%", i))
+                i += 1
+
+            # Minus or negative number literal
+            elif c == "-":
+                nxt = expr[i + 1] if i + 1 < n else ""
+                if nxt.isdigit():
+                    start = i
+                    i += 1
+                    is_float = False
+                    while i < n and (expr[i].isdigit() or expr[i] == "."):
+                        if expr[i] == ".":
+                            is_float = True
+                        i += 1
+                    s = expr[start:i]
+                    tokens.append(
+                        ExprToken(FLOAT if is_float else INT,
+                                  float(s) if is_float else int(s), start)
+                    )
+                else:
+                    tokens.append(ExprToken(MINUS, "-", i)); i += 1
+
+            # String literals
             elif c == '"':
                 i += 1
-                s = ''
-                while i < len(expr) and expr[i] != '"':
-                    if expr[i] == '\\' and i + 1 < len(expr):
+                s = []
+                while i < n and expr[i] != '"':
+                    if expr[i] == "\\" and i + 1 < n:
                         i += 1
-                        esc = {'n': '\n', 't': '\t', '\\': '\\', '"': '"'}
-                        s += esc.get(expr[i], expr[i])
+                        s.append({"n": "\n", "t": "\t", "\\": "\\",
+                                  '"': '"'}.get(expr[i], expr[i]))
                     else:
-                        s += expr[i]
+                        s.append(expr[i])
                     i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, s, i))
+                tokens.append(ExprToken(STRING, "".join(s), i))
             elif c == "'":
                 i += 1
-                s = ''
-                while i < len(expr) and expr[i] != "'":
-                    s += expr[i]
-                    i += 1
+                s = []
+                while i < n and expr[i] != "'":
+                    s.append(expr[i]); i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, s, i))
-            elif c.isdigit() or (c == '-' and i + 1 < len(expr) and expr[i + 1].isdigit()):
+                tokens.append(ExprToken(STRING, "".join(s), i))
+
+            # Number literals
+            elif c.isdigit():
                 start = i
-                i += 1
                 is_float = False
-                while i < len(expr) and (expr[i].isdigit() or expr[i] == '.'):
-                    if expr[i] == '.':
+                while i < n and (expr[i].isdigit() or expr[i] == "."):
+                    if expr[i] == ".":
                         is_float = True
                     i += 1
-                num_str = expr[start:i]
-                if is_float:
-                    tokens.append(ExprToken(FLOAT, float(num_str), start))
-                else:
-                    tokens.append(ExprToken(INT, int(num_str), start))
-            elif c.isalpha() or c == '_':
+                s = expr[start:i]
+                tokens.append(
+                    ExprToken(FLOAT if is_float else INT,
+                              float(s) if is_float else int(s), start)
+                )
+
+            # Identifiers and keywords
+            elif c.isalpha() or c == "_":
                 start = i
-                while i < len(expr) and (expr[i].isalnum() or expr[i] == '_'):
+                while i < n and (expr[i].isalnum() or expr[i] == "_"):
                     i += 1
                 word = expr[start:i]
-                if word == 'true':
-                    tokens.append(ExprToken(BOOL_TRUE, True, start))
-                elif word == 'false':
-                    tokens.append(ExprToken(BOOL_FALSE, False, start))
-                elif word == 'and':
-                    tokens.append(ExprToken(AND, 'and', start))
-                elif word == 'or':
-                    tokens.append(ExprToken(OR, 'or', start))
-                elif word == 'not':
-                    tokens.append(ExprToken(NOT, 'not', start))
+
+                # source:name — no whitespace allowed between source and :
+                if word == "source" and i < n and expr[i] == ":":
+                    i += 1
+                    src_start = i
+                    while i < n and (expr[i].isalnum() or expr[i] == "_"):
+                        i += 1
+                    tokens.append(ExprToken(SOURCE, expr[src_start:i], start))
+                    continue
+
+                word_lower = word.lower()
+                if word_lower in _KEYWORDS:
+                    ktype = _KEYWORDS[word_lower]
+                    val = True if ktype == BOOL_TRUE else (
+                        False if ktype == BOOL_FALSE else word_lower
+                    )
+                    tokens.append(ExprToken(ktype, val, start))
                 else:
                     tokens.append(ExprToken(IDENT, word, start))
+
             else:
-                raise ValueError(f"Unexpected character '{c}' at position {i}")
+                raise ValueError(f"Unexpected character {c!r} at position {i}")
+
         tokens.append(ExprToken(EOF, None, i))
         return tokens
 
 
+# ── Temporal builtins ────────────────────────────────────────────────────────
+
+def _resolve_temporal(name: str):
+    now = datetime.datetime.now()
+    return {
+        "CURRENT_HOUR": now.hour,
+        "CURRENT_DAY": now.day,
+        "CURRENT_WEEKDAY": now.strftime("%A").upper(),
+        "CURRENT_MONTH": now.month,
+        "CURRENT_YEAR": now.year,
+        "CURRENT_TIMESTAMP": now.isoformat(),
+    }.get(name, False)
+
+
+# ── Safe built-in functions ──────────────────────────────────────────────────
+
+def _call_safe_function(name: str, args: list):
+    try:
+        if name == "MATCHES":
+            return bool(re.search(str(args[1]), str(args[0])))
+        if name == "STARTS_WITH":
+            return str(args[0]).startswith(str(args[1]))
+        if name == "ENDS_WITH":
+            return str(args[0]).endswith(str(args[1]))
+        if name == "CONTAINS":
+            return str(args[1]) in str(args[0])
+        if name == "LEN":
+            v = args[0]
+            return len(v) if isinstance(v, (str, list, dict, set)) else 0
+        if name == "LOWER":
+            return str(args[0]).lower()
+        if name == "UPPER":
+            return str(args[0]).upper()
+        if name == "ELAPSED_SINCE":
+            past = datetime.datetime.fromisoformat(str(args[0]))
+            now = datetime.datetime.now(tz=past.tzinfo)
+            return (now - past).total_seconds()
+    except (IndexError, ValueError, TypeError, AttributeError):
+        return False
+    return False
+
+
+# ── Expression evaluator ─────────────────────────────────────────────────────
+
 class SafeExpr:
     """
-    Sandboxed expression evaluator.
-    ONLY allows: Identifier, IntLiteral, FloatLiteral, StringLiteral,
-    BoolLiteral, CompareOp, BinaryOp (and/or), UnaryOp (not).
+    Sandboxed condition algebra evaluator.
+
+    Grammar (precedence low → high):
+      expr         := and_expr  (OR and_expr)*
+      and_expr     := not_expr  (AND not_expr)*
+      not_expr     := NOT not_expr | comparison
+      comparison   := additive  [(==|!=|<|>|<=|>=) additive |
+                                  [NOT] IN in_rhs]
+      additive     := multiplicative  ((+|-) multiplicative)*
+      multiplicative := unary  ((*|/|%) unary)*
+      unary        := -unary | primary
+      primary      := literal | ident_or_call | (expr) | inline_set
     """
 
     class ParseError(Exception):
@@ -174,196 +336,382 @@ class SafeExpr:
 
     @classmethod
     def evaluate(cls, expr, context: dict) -> bool:
-        """
-        Evaluate an expression against a context dict.
-        Accepts either a raw string or a tokenized list.
-        Returns boolean result.
-        """
-        if isinstance(expr, str):
-            tokens = PolicyParser._tokenize(expr)
-        else:
-            tokens = expr
+        tokens = (PolicyParser._tokenize(expr)
+                  if isinstance(expr, str) else expr)
         parser = cls(tokens)
         result = parser.parse_expr()
         if parser.current().type != EOF:
             raise cls.ParseError(f"Unexpected token: {parser.current()}")
-        return cls._eval_node(result, context)
+        return bool(cls._eval_node(result, context))
 
     def __init__(self, tokens: list):
         self.tokens = tokens
         self.pos = 0
 
-    def current(self):
-        return self.tokens[self.pos] if self.pos < len(self.tokens) else ExprToken(EOF, None)
+    def current(self) -> ExprToken:
+        return (self.tokens[self.pos] if self.pos < len(self.tokens)
+                else ExprToken(EOF, None))
 
-    def advance(self):
+    def _peek(self) -> ExprToken:
+        p = self.pos + 1
+        return (self.tokens[p] if p < len(self.tokens)
+                else ExprToken(EOF, None))
+
+    def advance(self) -> ExprToken:
         tok = self.current()
         self.pos += 1
         return tok
 
-    def expect(self, *types):
+    def expect(self, *types) -> ExprToken:
         tok = self.current()
         if tok.type not in types:
-            raise self.ParseError(f"Expected {types}, got {tok.type}({tok.value})")
+            raise self.ParseError(
+                f"Expected {types}, got {tok.type}({tok.value!r})"
+            )
         return self.advance()
 
+    # or
     def parse_expr(self):
         left = self.parse_and_expr()
         while self.current().type == OR:
             self.advance()
-            right = self.parse_and_expr()
-            left = ('or', left, right)
+            left = ("or", left, self.parse_and_expr())
         return left
 
+    # and
     def parse_and_expr(self):
         left = self.parse_not_expr()
         while self.current().type == AND:
             self.advance()
-            right = self.parse_not_expr()
-            left = ('and', left, right)
+            left = ("and", left, self.parse_not_expr())
         return left
 
+    # unary not  (NOT IN is handled in parse_comparison, not here)
     def parse_not_expr(self):
-        if self.current().type == NOT:
+        if self.current().type == NOT and self._peek().type != IN:
             self.advance()
-            operand = self.parse_not_expr()
-            return ('not', operand)
+            return ("not", self.parse_not_expr())
         return self.parse_comparison()
 
+    # ==, !=, <, >, <=, >=, IN, NOT IN
     def parse_comparison(self):
-        left = self.parse_arithmetic()
-        if self.current().type in (EQEQ, NE, LT, GT, LE, GE):
-            op = self.current().type
+        left = self.parse_additive()
+        cur = self.current()
+
+        if cur.type == NOT and self._peek().type == IN:
+            self.advance(); self.advance()
+            return ("not_in", left, self._parse_in_rhs())
+
+        if cur.type == IN:
             self.advance()
-            right = self.parse_arithmetic()
-            return ('compare', op, left, right)
+            return ("in", left, self._parse_in_rhs())
+
+        if cur.type in (EQEQ, NE, LT, GT, LE, GE):
+            op = cur.type
+            self.advance()
+            return ("compare", op, left, self.parse_additive())
+
         return left
 
-    def parse_arithmetic(self):
-        left = self.parse_primary()
-        while self.current().type == PLUS:
-            self.advance()
-            right = self.parse_primary()
-            left = ('add', left, right)
+    def _parse_in_rhs(self):
+        tok = self.current()
+        if tok.type == LBRACKET:
+            return self._parse_inline_set()
+        if tok.type == SOURCE:
+            return ("source", self.advance().value)
+        if tok.type == IDENT:
+            return ("ident", self.advance().value)
+        raise self.ParseError(
+            f"Expected set, source, or identifier after IN; got {tok}"
+        )
+
+    def _parse_inline_set(self):
+        self.expect(LBRACKET)
+        items = []
+        while self.current().type not in (RBRACKET, EOF):
+            items.append(self.parse_primary())
+            if self.current().type == COMMA:
+                self.advance()
+        self.expect(RBRACKET)
+        return ("set", items)
+
+    # +, -
+    def parse_additive(self):
+        left = self.parse_multiplicative()
+        while self.current().type in (PLUS, MINUS):
+            op = self.advance().type
+            right = self.parse_multiplicative()
+            left = ("add", left, right) if op == PLUS else ("sub", left, right)
         return left
 
+    # *, /, %
+    def parse_multiplicative(self):
+        left = self.parse_unary()
+        while self.current().type in (STAR, SLASH, PERCENT):
+            op = self.advance().type
+            right = self.parse_unary()
+            if op == STAR:
+                left = ("mul", left, right)
+            elif op == SLASH:
+                left = ("div", left, right)
+            else:
+                left = ("mod", left, right)
+        return left
+
+    # unary minus
+    def parse_unary(self):
+        if self.current().type == MINUS:
+            self.advance()
+            return ("neg", self.parse_primary())
+        return self.parse_primary()
+
+    # literals, identifiers, calls, dot-access, quantifiers, sets
     def parse_primary(self):
         tok = self.current()
+
         if tok.type == LPAREN:
             self.advance()
             expr = self.parse_expr()
             self.expect(RPAREN)
             return expr
-        elif tok.type == INT:
-            self.advance()
-            return ('int', tok.value)
-        elif tok.type == FLOAT:
-            self.advance()
-            return ('float', tok.value)
-        elif tok.type == STRING:
-            self.advance()
-            return ('string', tok.value)
-        elif tok.type == BOOL_TRUE:
-            self.advance()
-            return ('bool', True)
-        elif tok.type == BOOL_FALSE:
-            self.advance()
-            return ('bool', False)
-        elif tok.type == IDENT:
-            self.advance()
-            return ('ident', tok.value)
-        else:
-            raise self.ParseError(f"Unexpected token: {tok}")
+
+        if tok.type == LBRACKET:
+            return self._parse_inline_set()
+
+        if tok.type == INT:
+            return ("int", self.advance().value)
+        if tok.type == FLOAT:
+            return ("float", self.advance().value)
+        if tok.type == STRING:
+            return ("string", self.advance().value)
+        if tok.type == BOOL_TRUE:
+            self.advance(); return ("bool", True)
+        if tok.type == BOOL_FALSE:
+            self.advance(); return ("bool", False)
+        if tok.type == SOURCE:
+            return ("source", self.advance().value)
+
+        if tok.type == IDENT:
+            name = self.advance().value
+
+            # Function call or quantifier: NAME(...)
+            if self.current().type == LPAREN:
+                self.advance()  # consume (
+                upper = name.upper()
+                if upper in _QUANTIFIERS:
+                    return self._parse_quantifier_body(upper)
+                return self._parse_function_body(name)
+
+            # Dot-access chain: a.b.c
+            parts = [name]
+            while self.current().type == DOT and self._peek().type == IDENT:
+                self.advance()  # DOT
+                parts.append(self.advance().value)  # IDENT
+
+            if len(parts) == 1:
+                return ("ident", name)
+            return ("attr", parts)
+
+        raise self.ParseError(f"Unexpected token: {tok}")
+
+    def _parse_function_body(self, name: str):
+        """Parse arg1, arg2, ...) — opening ( already consumed."""
+        args = []
+        while self.current().type not in (RPAREN, EOF):
+            args.append(self.parse_expr())
+            if self.current().type == COMMA:
+                self.advance()
+        self.expect(RPAREN)
+        return ("call", name.upper(), args)
+
+    def _parse_quantifier_body(self, quantifier: str):
+        """Parse collection, var -> condition) — opening ( already consumed."""
+        collection = self.parse_expr()
+        self.expect(COMMA)
+        if self.current().type != IDENT:
+            raise self.ParseError(
+                f"Expected lambda variable in {quantifier}(...)"
+            )
+        var = self.advance().value
+        self.expect(ARROW)
+        condition = self.parse_expr()
+        self.expect(RPAREN)
+        return (quantifier.lower(), collection, var, condition)
+
+    # ── Evaluator ────────────────────────────────────────────────────────────
 
     @staticmethod
     def _eval_node(node, context: dict):
-        """Evaluate a parsed expression node against context, returning a value."""
-        if isinstance(node, bool):
-            return node
         if not isinstance(node, tuple):
             return bool(node)
-
         tag = node[0]
 
-        if tag in ('int', 'float', 'bool'):
+        # Literals
+        if tag in ("int", "float", "bool", "string"):
             return node[1]
-        elif tag == 'string':
-            return node[1]
-        elif tag == 'ident':
+
+        # Simple identifier: temporal builtin or context lookup
+        if tag == "ident":
             name = node[1]
-            if name in context:
-                return context[name]
-            # Unknown identifiers return False rather than leaking their string name
-            return False
+            if name in _TEMPORAL_BUILTINS:
+                return _resolve_temporal(name)
+            return context.get(name, False)
 
-        elif tag == 'add':
-            return SafeExpr._eval_node(node[1], context) + SafeExpr._eval_node(node[2], context)
+        # Dot-access: walk nested dicts
+        if tag == "attr":
+            val = context
+            for part in node[1]:
+                if isinstance(val, dict):
+                    val = val.get(part)
+                    if val is None:
+                        return False
+                else:
+                    return False
+            return val
 
-        elif tag == 'not':
+        # Dynamic source (list injected by TarlRuntime as "source:<name>")
+        if tag == "source":
+            return context.get(f"source:{node[1]}", [])
+
+        # Inline set: list of evaluated items
+        if tag == "set":
+            return [SafeExpr._eval_node(item, context) for item in node[1]]
+
+        # Arithmetic
+        ev = SafeExpr._eval_node
+        if tag == "add":
+            try:
+                return ev(node[1], context) + ev(node[2], context)
+            except TypeError:
+                return False
+        if tag == "sub":
+            try:
+                return ev(node[1], context) - ev(node[2], context)
+            except TypeError:
+                return False
+        if tag == "mul":
+            try:
+                return ev(node[1], context) * ev(node[2], context)
+            except TypeError:
+                return False
+        if tag == "div":
+            try:
+                r = ev(node[2], context)
+                return ev(node[1], context) / r if r != 0 else False
+            except TypeError:
+                return False
+        if tag == "mod":
+            try:
+                r = ev(node[2], context)
+                return ev(node[1], context) % r if r != 0 else False
+            except TypeError:
+                return False
+        if tag == "neg":
+            try:
+                return -SafeExpr._eval_node(node[1], context)
+            except TypeError:
+                return False
+
+        # Logic
+        if tag == "not":
             return not SafeExpr._eval_node(node[1], context)
-        
-        elif tag == 'and':
-            return SafeExpr._eval_node(node[1], context) and SafeExpr._eval_node(node[2], context)
+        if tag == "and":
+            return (SafeExpr._eval_node(node[1], context)
+                    and SafeExpr._eval_node(node[2], context))
+        if tag == "or":
+            return (SafeExpr._eval_node(node[1], context)
+                    or SafeExpr._eval_node(node[2], context))
 
-        elif tag == 'or':
-            return SafeExpr._eval_node(node[1], context) or SafeExpr._eval_node(node[2], context)
+        # Set membership
+        if tag == "in":
+            val = SafeExpr._eval_node(node[1], context)
+            col = SafeExpr._eval_node(node[2], context)
+            is_col = isinstance(col, (list, set, frozenset))
+            return val in col if is_col else False
+        if tag == "not_in":
+            val = SafeExpr._eval_node(node[1], context)
+            col = SafeExpr._eval_node(node[2], context)
+            is_col = isinstance(col, (list, set, frozenset))
+            return val not in col if is_col else True
 
-        elif tag == 'compare':
+        # Comparison
+        if tag == "compare":
             op = node[1]
-            left_val = SafeExpr._eval_node(node[2], context)
-            right_val = SafeExpr._eval_node(node[3], context)
-
-            # Handle type mismatch in comparisons
-            if not isinstance(left_val, type(right_val)):
-                # Try to coerce
+            lv = SafeExpr._eval_node(node[2], context)
+            rv = SafeExpr._eval_node(node[3], context)
+            if type(lv) is not type(rv):
                 try:
-                    if isinstance(left_val, str) and isinstance(right_val, (int, float)):
-                        right_val = str(right_val)
-                    elif isinstance(right_val, str) and isinstance(left_val, (int, float)):
-                        left_val = str(left_val)
+                    if isinstance(lv, str) and isinstance(rv, (int, float)):
+                        rv = str(rv)
+                    elif isinstance(rv, str) and isinstance(lv, (int, float)):
+                        lv = str(lv)
                 except (ValueError, TypeError):
                     return False
-
             try:
-                if op == EQEQ:
-                    return left_val == right_val
-                elif op == NE:
-                    return left_val != right_val
-                elif op == LT:
-                    return left_val < right_val
-                elif op == GT:
-                    return left_val > right_val
-                elif op == LE:
-                    return left_val <= right_val
-                elif op == GE:
-                    return left_val >= right_val
+                if op == EQEQ: return lv == rv
+                if op == NE:   return lv != rv
+                if op == LT:   return lv < rv
+                if op == GT:   return lv > rv
+                if op == LE:   return lv <= rv
+                if op == GE:   return lv >= rv
             except TypeError:
                 return False
             return False
+
+        # Safe function calls
+        if tag == "call":
+            args = [SafeExpr._eval_node(a, context) for a in node[2]]
+            return _call_safe_function(node[1], args)
+
+        # Quantifiers
+        if tag == "all":
+            _, collection_node, var, cond = node
+            col = SafeExpr._eval_node(collection_node, context)
+            if not isinstance(col, (list, set, frozenset)):
+                return False
+            return all(
+                SafeExpr._eval_node(cond, {**context, var: item})
+                for item in col
+            )
+        if tag == "any":
+            _, collection_node, var, cond = node
+            col = SafeExpr._eval_node(collection_node, context)
+            if not isinstance(col, (list, set, frozenset)):
+                return False
+            return any(
+                SafeExpr._eval_node(cond, {**context, var: item})
+                for item in col
+            )
 
         return bool(node)
 
     @staticmethod
     def _resolve_value(node, context: dict):
-        """Resolve a value from an expression node, looking up identifiers in context."""
+        """Resolve a node to its raw value (for backwards compatibility)."""
         if isinstance(node, (bool, int, float, str)):
             return node
         if not isinstance(node, tuple):
             return None
         tag = node[0]
-        if tag in ('int', 'float', 'string', 'bool'):
+        if tag in ("int", "float", "string", "bool"):
             return node[1]
-        elif tag == 'ident':
-            name = node[1]
-            return context.get(name, name)
+        if tag == "ident":
+            return context.get(node[1], node[1])
+        if tag == "attr":
+            return SafeExpr._eval_node(node, context)
         return None
 
 
-def evaluate_policy(context: dict, policy_text: str = "", policy: TarlPolicy = None) -> TarlDecision:
+# ── Module-level evaluate_policy ─────────────────────────────────────────────
+
+def evaluate_policy(
+    context: dict,
+    policy_text: str = "",
+    policy: TarlPolicy = None,
+) -> TarlDecision:
     """
     Evaluate a policy against a context dict.
-    Accepts either raw policy_text or a pre-parsed TarlPolicy.
-    Returns TarlDecision with verdict and reason.
+    First-match-wins: Eval(P,c) = vₖ where k=min{i|φᵢ(c)=true}, else DENY.
     """
     if policy is None:
         if not policy_text:
@@ -372,14 +720,13 @@ def evaluate_policy(context: dict, policy_text: str = "", policy: TarlPolicy = N
 
     for i, rule in enumerate(policy.rules):
         try:
-            tokens = PolicyParser._tokenize(rule.condition)
-            result = SafeExpr.evaluate(tokens, context)
+            result = SafeExpr.evaluate(rule.condition, context)
             if result:
                 return TarlDecision(
                     verdict=rule.verdict,
                     reason=f"Rule matched: {rule}",
                     rule_index=i,
-                    matched_rule=str(rule)
+                    matched_rule=str(rule),
                 )
         except Exception:
             continue
