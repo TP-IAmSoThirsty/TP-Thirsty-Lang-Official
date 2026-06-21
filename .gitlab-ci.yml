@@ -1,0 +1,32 @@
+stages:
+  - test
+  - publish
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+cache:
+  paths:
+    - .pip-cache/
+
+smoke:
+  stage: test
+  image: python:3.11-slim
+  script:
+    - pip install -e ".[test]" --quiet
+    - pytest tests/ -q --tb=short
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+
+pypi-publish:
+  stage: publish
+  image: python:3.11-slim
+  script:
+    - pip install build twine setuptools==68.2.2 --quiet
+    - python -m build
+    - python -m twine upload dist/* --username __token__ --password "$PYPI_API_TOKEN"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+  environment:
+    name: pypi
