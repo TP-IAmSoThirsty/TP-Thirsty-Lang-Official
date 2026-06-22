@@ -43,6 +43,23 @@ def _walk_value(value):
             yield from _walk_value(item)
 
 
+def _guarded_cascade_ids(ast) -> set:
+    """Ids of CascadeCall nodes lexically inside a spillage body with handlers.
+
+    A cascade is *error-aware* only when it sits within the protected ``body`` of
+    a ``spillage { ... } error { ... }`` block — i.e. an error raised while
+    awaiting it is actually caught. Co-presence (a spillage somewhere else in the
+    program) does not count.
+    """
+    guarded: set = set()
+    for node in _walk(ast):
+        if isinstance(node, SpillageStmt) and node.handlers:
+            for inner in _walk(node.body):
+                if isinstance(inner, CascadeCall):
+                    guarded.add(id(inner))
+    return guarded
+
+
 class ThirstOfGodsError(Exception):
     """Custom exception for Thirst of Gods violations."""
     pass
@@ -94,23 +111,36 @@ def to_gods(ast: Program) -> DeityContract:
     # A single structural walk over the whole AST — into every function/method
     # body and nested block — decides the four contract signals from the real
     # constructs present, never from what a function happens to be *named*.
+    cascades = []
     for node in _walk(ast):
         if isinstance(node, ClassDecl):
             if any(getattr(m, "name", None) == "init" for m in node.methods):
                 has_fountain_init = True
         elif isinstance(node, CascadeCall):
-            has_cascade_handler = True
+            cascades.append(node)
         elif isinstance(node, SpillageStmt):
             if node.handlers:
                 has_spillage_handler = True
         elif isinstance(node, CleanupStmt):
             has_cleanup = True
 
+    # Cascade handling is *linked*, not merely co-present: every cascade must
+    # sit inside a spillage body that has handlers, so the awaited error has a
+    # real consumer. A program with no cascades at all fails the signal too.
+    guarded = _guarded_cascade_ids(ast)
+    unguarded = [c for c in cascades if id(c) not in guarded]
+    has_cascade_handler = bool(cascades) and not unguarded
+
     violations: list[str] = []
     if not has_fountain_init:
         violations.append("Missing fountain with init method")
     if not has_cascade_handler:
-        violations.append("Missing cascade handler with error handling")
+        if unguarded:
+            violations.append(
+                f"{len(unguarded)} cascade call(s) not inside a spillage "
+                "handler (awaited error has no consumer)")
+        else:
+            violations.append("Missing cascade handler with error handling")
     if not has_spillage_handler:
         violations.append("Missing spillage block with error handlers")
     if not has_cleanup:

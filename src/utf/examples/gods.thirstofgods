@@ -29,8 +29,12 @@ glass process_item(item) {
 glass async_process(items) {
     drink mut results = []
     refill (item in items) {
-        drink r = cascade process_item(item)
-        results = results + [r]
+        spillage {
+            drink r = cascade process_item(item)
+            results = results + [r]
+        } error {
+            results = results + ["error"]
+        }
     }
     return results
 }

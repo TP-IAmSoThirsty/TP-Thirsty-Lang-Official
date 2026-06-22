@@ -308,25 +308,81 @@ class PlaneIsolationAnalyzer:
         )
 
 
+# Calls whose results vary across replays (matched on the callee name).
+_NON_DET_CALLS = {
+    'now', 'rand', 'random', 'randint', 'time', 'gettime', 'get_time',
+    'uuid', 'uuid4', 'date', 'today', 'clock', 'utcnow', 'timestamp',
+}
+
+
+class EffectAnalysis:
+    """Taint dataflow that follows non-determinism through aliases.
+
+    A name bound from anything that references a non-deterministic source —
+    directly (``drink x = now()``), by aliasing the function (``drink f = now``),
+    or transitively (``drink g = f``) — becomes *tainted*. A call whose callee is
+    a tainted name is then itself reported as non-deterministic. This closes the
+    indirection evasion that a callee-name allowlist alone cannot see: aliasing
+    ``now`` into a variable and calling it no longer slips through.
+
+    The taint set is computed to a fixpoint, so it is independent of statement
+    order (``g`` tainted by ``f`` even if ``g``'s binding is read first).
+    """
+
+    NON_DET = _NON_DET_CALLS
+
+    def __init__(self):
+        self.tainted: set = set()
+        self.nondet_calls: list = []
+
+    def _refs_nondet(self, expr) -> bool:
+        for node in astwalk(expr):
+            if (isinstance(node, Identifier)
+                    and (node.name.lower() in self.NON_DET
+                         or node.name in self.tainted)):
+                return True
+        return False
+
+    def run(self, ast) -> "EffectAnalysis":
+        # Collect every (bound_name, rhs_expr) pair anywhere in the tree.
+        assigns = []
+        for node in astwalk(ast):
+            if isinstance(node, VariableDecl) and node.init_expr is not None:
+                assigns.append((node.name, node.init_expr))
+            elif (isinstance(node, AssignStmt)
+                  and isinstance(node.target, Identifier)):
+                assigns.append((node.target.name, node.value))
+        # Propagate taint to a fixpoint.
+        changed = True
+        while changed:
+            changed = False
+            for name, rhs in assigns:
+                if name in self.tainted:
+                    continue
+                if self._refs_nondet(rhs):
+                    self.tainted.add(name)
+                    changed = True
+        # A call to a non-deterministic name *or a tainted alias* is a finding.
+        for node in astwalk(ast):
+            if (isinstance(node, CallExpr)
+                    and isinstance(node.callee, Identifier)):
+                name = node.callee.name
+                if name.lower() in self.NON_DET or name in self.tainted:
+                    self.nondet_calls.append(name)
+        return self
+
+
 class DeterminismAnalyzer:
     """Ensures the shadow block calls no non-deterministic functions."""
 
     NON_DETERMINISTIC = {'now', 'rand', 'random', 'time', 'uuid', 'date', 'clock'}
     # Calls whose results vary across replays (matched on the callee name).
-    NON_DET_CALLS = {
-        'now', 'rand', 'random', 'randint', 'time', 'gettime', 'get_time',
-        'uuid', 'uuid4', 'date', 'today', 'clock', 'utcnow', 'timestamp',
-    }
+    NON_DET_CALLS = _NON_DET_CALLS
 
     def analyze(self, module: ShadowModule) -> AnalysisResult:
         ast = module.shadow_ast
         if ast is not None:
-            found = []
-            for node in astwalk(ast):
-                if (isinstance(node, CallExpr)
-                        and isinstance(node.callee, Identifier)
-                        and node.callee.name.lower() in self.NON_DET_CALLS):
-                    found.append(node.callee.name)
+            found = EffectAnalysis().run(ast).nondet_calls
             if found:
                 return AnalysisResult(
                     analyzer="Determinism", passed=False,
@@ -512,12 +568,21 @@ class MemoryEvaporationAnalyzer:
 
 
 class CanonicalConvergenceAnalyzer:
-    """Checks shadow and canonical converge via structural AST equivalence.
+    """Checks shadow and canonical converge, in three layered passes.
 
-    Both blocks are reduced to an alpha-renamed structural signature: identifier
-    *names* become positional placeholders (so naming differences don't matter)
-    while node shapes, literal values, and return arity are preserved (so a
-    genuinely different computation diverges).
+    1. **Structural** — alpha-renamed AST equality (this is a *sufficient* proof
+       of equivalence: same shape up to naming ⇒ same computation). Fast pass.
+    2. **Z3 symbolic** (``thirsty-lang[analysis]``) — for the straight-line
+       integer-arithmetic subset, prove the two return values are equal for all
+       inputs (``UNSAT``) or surface a diverging input (``SAT``).
+    3. **Execute-and-compare** — run both blocks in a sandboxed interpreter over
+       seeded inputs and compare outputs, reporting the first diverging input.
+
+    Structural difference is no longer treated as proof of divergence: the
+    symbolic and execution layers can still *promote* a differently-shaped block
+    (e.g. ``x + x`` vs ``x * 2``) or *reject* it with a concrete counterexample.
+    Only when no layer can decide does it fall back to the conservative
+    structural verdict.
     """
 
     def analyze(self, module: ShadowModule) -> AnalysisResult:
@@ -529,29 +594,61 @@ class CanonicalConvergenceAnalyzer:
             )
 
         s_ast, c_ast = module.shadow_ast, module.canonical_ast
-        if s_ast is not None and c_ast is not None:
-            s_sig = _structural_signature(s_ast, {})
-            c_sig = _structural_signature(c_ast, {})
-            s_returns = sum(1 for n in astwalk(s_ast) if isinstance(n, ReturnStmt))
-            c_returns = sum(1 for n in astwalk(c_ast) if isinstance(n, ReturnStmt))
-            if s_returns != c_returns:
-                return AnalysisResult(
-                    analyzer="CanonicalConvergence", passed=False,
-                    level=AnalysisLevel.NON_CRITICAL,
-                    message=f"Return arity differs (shadow {s_returns}, canonical {c_returns}) — possible divergence",
-                )
-            if s_sig != c_sig:
-                return AnalysisResult(
-                    analyzer="CanonicalConvergence", passed=False,
-                    level=AnalysisLevel.NON_CRITICAL,
-                    message="Shadow and canonical AST shapes differ — possible divergence",
-                )
+        if s_ast is None or c_ast is None:
+            return self._lexical(module)
+
+        # Layer 1 — structural equivalence (sufficient proof; cheapest).
+        s_sig = _structural_signature(s_ast, {})
+        c_sig = _structural_signature(c_ast, {})
+        if s_sig == c_sig:
             return AnalysisResult(
                 analyzer="CanonicalConvergence", passed=True,
                 level=AnalysisLevel.CRITICAL,
                 message="Shadow and canonical blocks are structurally equivalent",
             )
-        return self._lexical(module)
+
+        # Layers 2 & 3 — semantic equivalence over the real blocks.
+        semantic = self._semantic(s_ast, c_ast)
+        if semantic is not None:
+            return semantic
+
+        # No layer could decide — fall back to the conservative structural
+        # verdict (a shape difference we cannot otherwise explain).
+        s_returns = sum(1 for n in astwalk(s_ast) if isinstance(n, ReturnStmt))
+        c_returns = sum(1 for n in astwalk(c_ast) if isinstance(n, ReturnStmt))
+        if s_returns != c_returns:
+            return AnalysisResult(
+                analyzer="CanonicalConvergence", passed=False,
+                level=AnalysisLevel.NON_CRITICAL,
+                message=f"Return arity differs (shadow {s_returns}, canonical {c_returns}) — possible divergence",
+            )
+        return AnalysisResult(
+            analyzer="CanonicalConvergence", passed=False,
+            level=AnalysisLevel.NON_CRITICAL,
+            message="Shadow and canonical AST shapes differ — possible divergence",
+        )
+
+    def _semantic(self, s_ast, c_ast) -> Optional[AnalysisResult]:
+        """Run the Z3 then execute-and-compare layers; None if both abstain."""
+        from utf.shadow_thirst import convergence as conv
+
+        for layer in (conv.z3_equivalence, conv.execute_and_compare):
+            verdict = layer(s_ast, c_ast)
+            if verdict.status == "equivalent":
+                return AnalysisResult(
+                    analyzer="CanonicalConvergence", passed=True,
+                    level=AnalysisLevel.CRITICAL,
+                    message=f"Shadow and canonical blocks converge — {verdict.detail}",
+                )
+            if verdict.status == "diverge":
+                ce = f" (counterexample: {verdict.counterexample})" if verdict.counterexample else ""
+                return AnalysisResult(
+                    analyzer="CanonicalConvergence", passed=False,
+                    level=AnalysisLevel.NON_CRITICAL,
+                    message=f"Shadow diverges from canonical — {verdict.detail}{ce}",
+                )
+            # "unsupported"/"unavailable" → try the next layer.
+        return None
 
     def _lexical(self, module: ShadowModule) -> AnalysisResult:
         shadow_lines = [l.strip() for l in module.shadow_code.split('\n') if l.strip()]

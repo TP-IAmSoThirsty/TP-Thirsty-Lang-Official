@@ -23,20 +23,21 @@ def _ast(src):
 
 
 # A program that satisfies every deity contract using real constructs, while
-# nothing is *named* cascade / spillage / cleanup / fountain.
+# nothing is *named* cascade / spillage / cleanup / fountain. The cascade lives
+# *inside* the spillage body, so its awaited error has a real consumer.
 COMPLIANT = """module m: core
 fountain Reservoir {
     glass init(self) { return self }
 }
 glass worker(items) {
-    drink r = cascade fetch(items)
     spillage {
+        drink r = cascade fetch(items)
         return r
     } error {
         return none
     }
     cleanup {
-        return r
+        return none
     } finally {
         return none
     }
@@ -94,17 +95,39 @@ fountain Vessel {
         contract = to_gods(_ast(src))
         assert not contract.has_fountain_init
 
-    def test_cascade_detected_inside_nested_block(self):
-        # Cascade buried inside a nested block must still be found.
+    def test_cascade_inside_nested_spillage_is_guarded(self):
+        # A cascade buried inside a nested spillage body is still linked to its
+        # handler — containment is found at any depth.
         src = """module m: core
 glass deep(items) {
     thirsty (items) {
-        drink r = cascade fetch(items)
+        spillage {
+            drink r = cascade fetch(items)
+        } error {
+            return none
+        }
     }
 }
 """
         contract = to_gods(_ast(src))
         assert contract.has_cascade_handler
+
+    def test_cascade_outside_spillage_is_unguarded(self):
+        # Co-presence is not enough: a cascade with a spillage elsewhere in the
+        # program (not wrapping it) has no real consumer for its awaited error.
+        src = """module m: core
+glass worker(items) {
+    drink r = cascade fetch(items)
+    spillage {
+        return r
+    } error {
+        return none
+    }
+}
+"""
+        contract = to_gods(_ast(src))
+        assert not contract.has_cascade_handler
+        assert any("cascade" in v.lower() for v in contract.violations)
 
     def test_spillage_without_handlers_does_not_count(self):
         src = """module m: core

@@ -41,3 +41,6 @@ dmypy.json
 
 # IDE
 .github/instructions/codacy.instructions.md
+
+# pytest basetemp
+.tmp/
