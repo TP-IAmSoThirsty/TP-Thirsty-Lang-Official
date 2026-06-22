@@ -340,20 +340,40 @@ class Interpreter:
         raise ReturnException(value)
 
     def _execute_pour(self, stmt: PourStmt) -> object:
+        self._gate_capability("write", "stdout")
         value = self._evaluate(stmt.value)
-        if isinstance(value, str):
-            print(value)
-        else:
-            print(value)
+        print(value)
         return None  # pour handles its own output — no value propagation
 
     def _execute_sip(self, stmt: SipStmt) -> object:
+        self._gate_capability("read", "stdin")
         value = input()
         if isinstance(stmt.target, Identifier):
             self.env.set(stmt.target.name, value)
         return value
 
+    def _gate_capability(self, action: str, target: str) -> None:
+        """Capability gate for sensitive operations (imports, I/O) in governed
+        mode. Active only when a TARL policy engine + authority are attached;
+        a non-ALLOW verdict denies the operation with a proof. Deny-by-default
+        (no matching rule → DENY) comes from the policy engine itself.
+        """
+        if (self.mode != "governed" or self.tarl_runtime is None
+                or self.authority is None):
+            return
+        from utf.tarl.spec import TarlVerdict
+        ctx = {"action": action, "target": str(target),
+               "authority": self.authority}
+        decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+        self._last_proof = proof
+        if decision.verdict != TarlVerdict.ALLOW:
+            raise GovernanceViolation(
+                f"{action} {target}",
+                decision.reason or f"capability denied ({decision.verdict})",
+                proof)
+
     def _execute_import(self, stmt: ImportStmt) -> object:
+        self._gate_capability("import", stmt.module_path)
         try:
             module = resolve_import(stmt.module_path)
             alias = stmt.alias or stmt.module_path
@@ -473,7 +493,7 @@ class Interpreter:
         return self
 
     def _execute_governed_function_decl(self, stmt: GovernedFunctionDecl):
-        """Define a governed function whose precondition is enforced per call."""
+        """Define a top-level governed function with full contract enforcement."""
         def fn(*args):
             old_env = self.env
             self.env = self.env.enter_scope()
@@ -483,89 +503,128 @@ class Interpreter:
                 self.env.define(pname, val, is_mut=False)
                 context[pname] = val
             try:
-                allowed, reason, proof = self._enforce_governance(context, stmt)
-                self._last_proof = proof
-                if not allowed:
-                    raise GovernanceViolation(stmt.name, reason, proof)
-                result = None
-                try:
-                    result = self._execute(stmt.body)
-                except ReturnException as e:
-                    result = e.value
-                return result
+                return self._run_governed(stmt, context, top_level=True)
             finally:
                 self.env = old_env
         self.env.define(stmt.name, fn, is_mut=False)
         return fn
 
-    def _enforce_governance(self, context: dict, decl=None):
-        """Decide whether a governed call is allowed. Default-deny in governed mode.
+    def _run_governed(self, decl: GovernedFunctionDecl, context: dict,
+                      top_level: bool):
+        """Enforce entry contracts, run the body, then enforce exit contracts.
 
-        Returns ``(allowed: bool, reason: str, proof)``. Layered policy:
-          1. In-language precondition (``requires`` expr) — must be truthy.
-          2. Cross-mode guard — a governed function called from non-governed
-             mode is denied (runtime counterpart of checker E053).
-          3. Optional TARL routing — if a policy engine and authority are
-             present, a non-ALLOW verdict denies and a proof is returned.
-          4. Default — allow only if an explicit allow was produced; otherwise
-             deny when running in governed mode.
+        Params are assumed already bound in the current scope. ``top_level``
+        gates the cross-mode guard (E053): it applies to module-level governed
+        functions, not to method contracts (which are design-by-contract
+        assertions valid in any mode).
+        """
+        allowed, reason, proof = self._enforce_governance(
+            context, decl, phase="entry", enforce_mode_guard=top_level)
+        if proof is not None:
+            self._last_proof = proof
+        if not allowed:
+            raise GovernanceViolation(decl.name, reason, proof)
+
+        result = None
+        try:
+            result = self._execute(decl.body)
+        except ReturnException as e:
+            result = e.value
+
+        # Exit contracts: bind `result` so ensures/invariant can reference it.
+        self.env.define("result", result, is_mut=False)
+        exit_ctx = dict(context)
+        exit_ctx["result"] = result
+        allowed, reason, proof = self._enforce_governance(
+            exit_ctx, decl, phase="exit", enforce_mode_guard=top_level)
+        if proof is not None:
+            self._last_proof = proof
+        if not allowed:
+            raise GovernanceViolation(decl.name, reason, proof)
+        return result
+
+    def _eval_predicate(self, expr, annotation, label):
+        """Evaluate a governance predicate; return (ok, reason)."""
+        try:
+            if self._evaluate(expr):
+                return (True, "")
+            return (False, f"{label} failed: {annotation or '<expr>'}")
+        except Exception as exc:
+            return (False, f"{label} error: {exc}")
+
+    def _enforce_governance(self, context: dict, decl=None, phase="entry",
+                            enforce_mode_guard=True):
+        """Decide whether a governed call boundary is allowed.
+
+        Returns ``(allowed, reason, proof)``. Design-by-contract predicates
+        (requires/invariant at entry; ensures/invariant at exit) hold unless a
+        declared predicate fails. The TARL layer adds deny-by-default access
+        control when a policy engine + authority are configured.
         """
         proof = None
-        explicit_allow = False
-
-        # 2. Cross-mode guard: governed functions require governed mode.
-        if decl is not None and self.mode != "governed":
-            return (False,
-                    "governed function invoked outside governed mode", None)
-
-        # 1. In-language precondition.
-        if decl is not None and getattr(decl, "requires_expr", None) is not None:
-            try:
-                if self._evaluate(decl.requires_expr):
-                    explicit_allow = True
-                else:
-                    annotation = decl.requires_annotation or "<precondition>"
+        if phase == "entry":
+            # Cross-mode guard (E053): top-level governed fn from core is denied.
+            if decl is not None and enforce_mode_guard and self.mode != "governed":
+                return (False,
+                        "governed function invoked outside governed mode", None)
+            if decl is not None and getattr(decl, "requires_expr", None) is not None:
+                ok, reason = self._eval_predicate(
+                    decl.requires_expr, decl.requires_annotation, "precondition")
+                if not ok:
+                    return (False, reason, None)
+            if decl is not None and getattr(decl, "invariant_expr", None) is not None:
+                ok, reason = self._eval_predicate(
+                    decl.invariant_expr, decl.invariant_annotation,
+                    "invariant (entry)")
+                if not ok:
+                    return (False, reason, None)
+            # TARL policy routing (deny-by-default access control).
+            if self.tarl_runtime is not None and self.authority is not None:
+                from utf.tarl.spec import TarlVerdict
+                policy_ctx = dict(context)
+                policy_ctx["authority"] = self.authority
+                if decl is not None:
+                    policy_ctx.setdefault("action", decl.name)
+                decision, proof = self.tarl_runtime.evaluate_with_proof(policy_ctx)
+                if decision.verdict != TarlVerdict.ALLOW:
                     return (False,
-                            f"precondition failed: requires {annotation}", None)
-            except Exception as exc:
-                return (False, f"precondition error: {exc}", None)
-
-        # 3. Optional TARL policy routing.
-        if self.tarl_runtime is not None and self.authority is not None:
-            from utf.tarl.spec import TarlVerdict
-            policy_ctx = dict(context)
-            policy_ctx["authority"] = self.authority
-            if decl is not None:
-                policy_ctx.setdefault("action", decl.name)
-            decision, proof = self.tarl_runtime.evaluate_with_proof(policy_ctx)
-            if decision.verdict == TarlVerdict.ALLOW:
-                explicit_allow = True
-            else:
-                reason = decision.reason or f"policy verdict: {decision.verdict}"
-                return (False, reason, proof)
-
-        # 4. Default: deny in governed mode without an explicit allow.
-        if explicit_allow:
+                            decision.reason or f"policy verdict: {decision.verdict}",
+                            proof)
             return (True, "allowed", proof)
-        if self.mode == "governed":
-            return (False, "default-deny: no governing predicate granted access",
-                    proof)
+
+        # phase == "exit"
+        if decl is not None and getattr(decl, "ensures_expr", None) is not None:
+            ok, reason = self._eval_predicate(
+                decl.ensures_expr, decl.ensures_annotation, "postcondition")
+            if not ok:
+                return (False, reason, None)
+        if decl is not None and getattr(decl, "invariant_expr", None) is not None:
+            ok, reason = self._eval_predicate(
+                decl.invariant_expr, decl.invariant_annotation, "invariant (exit)")
+            if not ok:
+                return (False, reason, None)
         return (True, "allowed", proof)
 
     def _call_user_fn(self, func_decl: FunctionDecl, args: list) -> object:
         old_env = self.env
         self.env = self.env.enter_scope()
+        context = {}
         for i, (pname, _) in enumerate(func_decl.params):
             val = args[i] if i < len(args) else None
             self.env.define(pname, val, is_mut=False)
-        result = None
+            context[pname] = val
         try:
-            result = self._execute(func_decl.body)
-        except ReturnException as e:
-            result = e.value
+            if isinstance(func_decl, GovernedFunctionDecl):
+                # Method contracts: DBC enforcement, no cross-mode guard.
+                return self._run_governed(func_decl, context, top_level=False)
+            result = None
+            try:
+                result = self._execute(func_decl.body)
+            except ReturnException as e:
+                result = e.value
+            return result
         finally:
             self.env = old_env
-        return result
 
     def _evaluate_impl(self, expr: Expr) -> object:
         """Evaluate an expression and return its value."""

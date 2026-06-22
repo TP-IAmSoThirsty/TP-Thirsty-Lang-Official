@@ -62,6 +62,8 @@ class Checker:
         self.current_function_return_type: Type | None = None
         self.in_governed_mode = False
         self.imported_names: dict[str, str] = {}  # alias -> module_path
+        self._hoisted: set = set()         # top-level fn/class names
+        self._governed_names: set = set()  # governed function names
 
     def enter_scope(self):
         self.scope = Scope(self.scope)
@@ -80,10 +82,39 @@ class Checker:
             self.scope.declare("__module__", {"type": StringType(), "is_mut": False, "kind": "module"})
         # Register builtins
         self._register_builtins()
+        # Hoist top-level function/class names so forward references resolve.
+        self._hoist_declarations(ast.stmts)
         # Check all statements
         for stmt in ast.stmts:
             self._check_stmt(stmt)
         return self.errors
+
+    def _hoist_declarations(self, stmts):
+        """Pre-declare top-level functions/classes (enables forward references
+        and mutual recursion) and record which functions are governed."""
+        self._hoisted = set()
+        self._governed_names = set()
+        for stmt in stmts:
+            name = getattr(stmt, "name", None)
+            if isinstance(stmt, (FunctionDecl, GovernedFunctionDecl)):
+                if name in self._hoisted:
+                    self.errors.append(
+                        make_error("E010", span=stmt.span, name=name))
+                    continue
+                self.scope.declare(name, {
+                    "type": FunctionType([], AnyType()),
+                    "is_mut": False, "kind": "function"})
+                self._hoisted.add(name)
+                if isinstance(stmt, GovernedFunctionDecl):
+                    self._governed_names.add(name)
+            elif isinstance(stmt, ClassDecl):
+                if name in self._hoisted:
+                    self.errors.append(
+                        make_error("E010", span=stmt.span, name=name))
+                    continue
+                self.scope.declare(name, {
+                    "type": AnyType(), "is_mut": False, "kind": "class"})
+                self._hoisted.add(name)
 
     def _register_builtins(self):
         builtins = [
@@ -171,10 +202,14 @@ class Checker:
             }
 
     def _check_function_decl(self, stmt: FunctionDecl):
-        # Check duplicate
-        if not self.scope.declare(stmt.name, {"type": FunctionType([], AnyType()), "is_mut": False, "kind": "function"}):
-            self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
-            return
+        # Top-level names are pre-declared by the hoist pass; only declare (and
+        # duplicate-check) names that weren't hoisted (e.g. class methods).
+        already_hoisted = (stmt.name in self._hoisted
+                           and self.scope.bindings.get(stmt.name) is not None)
+        if not already_hoisted:
+            if not self.scope.declare(stmt.name, {"type": FunctionType([], AnyType()), "is_mut": False, "kind": "function"}):
+                self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
+                return
         self.enter_scope()
         # Register params
         param_types = []
@@ -198,8 +233,11 @@ class Checker:
         }
 
     def _check_class_decl(self, stmt: ClassDecl):
-        if not self.scope.declare(stmt.name, {"type": AnyType(), "is_mut": False, "kind": "class"}):
-            self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
+        already_hoisted = (stmt.name in self._hoisted
+                           and self.scope.bindings.get(stmt.name) is not None)
+        if not already_hoisted:
+            if not self.scope.declare(stmt.name, {"type": AnyType(), "is_mut": False, "kind": "class"}):
+                self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
         self.enter_scope()
         for fname, ftype in stmt.fields:
             t = type_from_name(ftype) if ftype else AnyType()
@@ -301,7 +339,10 @@ class Checker:
             self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
 
     def _check_governed_function_decl(self, stmt: GovernedFunctionDecl):
-        if not stmt.requires_annotation:
+        # A governed function is well-formed with any contract clause
+        # (requires / ensures / invariant); the parser guarantees at least one.
+        if not (stmt.requires_annotation or stmt.ensures_annotation
+                or stmt.invariant_annotation):
             self.errors.append(make_error("E052", span=stmt.span, name=stmt.name))
         self._check_function_decl(FunctionDecl(
             name=stmt.name, params=stmt.params,
@@ -372,6 +413,12 @@ class Checker:
                 return BoolType()
             return operand_type
         elif isinstance(expr, CallExpr):
+            # E053: a governed function may not be called from core mode.
+            if (isinstance(expr.callee, Identifier)
+                    and expr.callee.name in self._governed_names
+                    and not self.in_governed_mode):
+                self.errors.append(make_error(
+                    "E053", span=expr.span, name=expr.callee.name))
             callee_type = self._check_expr(expr.callee)
             if isinstance(callee_type, FunctionType):
                 expected = len(callee_type.param_types)

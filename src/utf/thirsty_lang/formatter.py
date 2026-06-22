@@ -125,9 +125,15 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
     elif isinstance(node, GovernedFunctionDecl):
         params = ", ".join(f"{n}: {t}" if t else n for n, t in node.params)
         ret = f": {node.return_type}" if node.return_type else ""
-        req = f" requires {node.requires_annotation}" if node.requires_annotation else ""
+        clauses = ""
+        if node.requires_annotation:
+            clauses += f" requires {node.requires_annotation}"
+        if node.ensures_annotation:
+            clauses += f" ensures {node.ensures_annotation}"
+        if node.invariant_annotation:
+            clauses += f" invariant {node.invariant_annotation}"
         body = format_block(node.body, indent + 1) if isinstance(node.body, BlockStmt) else format_stmt(node.body, indent + 1)
-        return f"{prefix}glass {node.name}({params}){ret}{req} {{\n{body}\n{prefix}}}"
+        return f"{prefix}glass {node.name}({params}){ret}{clauses} {{\n{body}\n{prefix}}}"
 
     elif isinstance(node, MorphDef):
         params = ", ".join(f"{n}: {t}" if t else n for n, t in node.params)

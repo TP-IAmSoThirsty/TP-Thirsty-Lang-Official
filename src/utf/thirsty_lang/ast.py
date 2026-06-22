@@ -343,6 +343,12 @@ class GovernedFunctionDecl(Stmt):
     body: Stmt
     requires_annotation: Optional[str] = None
     requires_expr: Optional[Expr] = None
+    # Postcondition: checked after the body with ``result`` bound to the return.
+    ensures_annotation: Optional[str] = None
+    ensures_expr: Optional[Expr] = None
+    # Invariant: a predicate enforced at both call entry and exit.
+    invariant_annotation: Optional[str] = None
+    invariant_expr: Optional[Expr] = None
 
 
 # === Module & Program ===

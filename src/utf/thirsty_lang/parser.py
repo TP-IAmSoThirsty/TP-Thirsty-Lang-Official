@@ -334,21 +334,28 @@ class Parser:
             type_token = self._expect(TokenType.IDENTIFIER, "E901",
                                       detail="Expected return type after '->'")
             return_type = type_token.lexeme
-        requires_expr = None
-        requires_annotation = None
-        if self._match(TokenType.REQUIRES):
-            req_start = self.current
-            requires_expr = self._parse_expr()
-            requires_annotation = " ".join(
-                t.lexeme for t in self.tokens[req_start:self.current]
-            )
+        # Governance clauses (any order): requires / ensures / invariant.
+        clauses = {}
+        while self._check(TokenType.REQUIRES, TokenType.ENSURES,
+                          TokenType.INVARIANT):
+            kind = self._advance().type
+            c_start = self.current
+            expr = self._parse_expr()
+            text = " ".join(
+                t.lexeme for t in self.tokens[c_start:self.current])
+            clauses[kind] = (expr, text)
         body = self._parse_block()
-        if requires_expr is not None:
+        if clauses:
+            req = clauses.get(TokenType.REQUIRES, (None, None))
+            ens = clauses.get(TokenType.ENSURES, (None, None))
+            inv = clauses.get(TokenType.INVARIANT, (None, None))
             return GovernedFunctionDecl(
                 name=name_token.lexeme, params=params,
                 return_type=return_type, body=body,
-                requires_annotation=requires_annotation,
-                requires_expr=requires_expr, span=self._span(start))
+                requires_annotation=req[1], requires_expr=req[0],
+                ensures_annotation=ens[1], ensures_expr=ens[0],
+                invariant_annotation=inv[1], invariant_expr=inv[0],
+                span=self._span(start))
         return FunctionDecl(name=name_token.lexeme, params=params,
                             return_type=return_type, body=body, span=self._span(start))
 
