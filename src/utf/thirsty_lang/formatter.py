@@ -275,6 +275,12 @@ def format_expr(node: Expr, precedence: int = 0) -> str:
         result = f"thirst {expr} quench {cond}"
         return result
 
+    elif isinstance(node, ArrayLiteral):
+        return "[" + ", ".join(format_expr(e, 0) for e in node.elements) + "]"
+
+    elif isinstance(node, MemberAccess):
+        return f"{format_expr(node.obj, 0)}.{node.member}"
+
     elif isinstance(node, FloodExpr):
         target = format_expr(node.target, 0)
         return f"flood({target})"

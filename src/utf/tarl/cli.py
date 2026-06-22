@@ -10,6 +10,8 @@ from utf.tarl.core import PolicyParser, evaluate_policy
 
 
 def main():
+    from utf.console import enable_utf8
+    enable_utf8()
     parser = argparse.ArgumentParser(
         description=(
             "T.A.R.L. (Thirsty's Active Resistance Language)"

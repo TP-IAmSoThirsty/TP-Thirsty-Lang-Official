@@ -32,6 +32,8 @@ def _node_to_str(n, indent=0):
 
 
 def main():
+    from utf.console import enable_utf8
+    enable_utf8()
     parser = argparse.ArgumentParser(
         description="TSCG — Thirst's Symbolic Constitutional Grammar"
     )

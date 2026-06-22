@@ -14,7 +14,7 @@ from utf.thirsty_lang.ast import (
     SecurityBlock, SanitizeExpr, ArmorExpr, MorphDef, DefendStrat,
     EnumDecl, StructDecl, InterfaceDecl, GovernedFunctionDecl,
     SpillageStmt, CleanupStmt, ThrowStmt, CascadeCall, NewExpr,
-    FloodExpr, DripExpr, EvaporateExpr, CondenseExpr,
+    FloodExpr, DripExpr, EvaporateExpr, CondenseExpr, ArrayLiteral, MemberAccess,
     SymbolExpr, PipelineExpr, CombineExpr, ShadowThirstMutation,
 CallExpr,
 )
@@ -583,10 +583,16 @@ class Parser:
                                   detail="Expected TSCG symbol name")
         return SymbolExpr(symbol_name=name_token.lexeme, span=self._span(start))
 
-    def _parse_expr_statement(self) -> ExprStmt:
+    def _parse_expr_statement(self) -> Stmt:
         start = self._peek()
         expr = self._parse_expr()
         self._match(TokenType.SEMICOLON)
+        # `x = y` parses as an AssignStmt; return it directly so it dispatches
+        # to _execute_assign. Wrapping it in an ExprStmt would route it through
+        # expression evaluation, which has no AssignStmt branch — making the
+        # assignment a silent no-op.
+        if isinstance(expr, AssignStmt):
+            return expr
         return ExprStmt(expr=expr, span=self._span(start))
 
     # === Expression Parsing with Precedence ===
@@ -653,9 +659,15 @@ class Parser:
                                             right.span[2], right.span[3]))
             elif op == TokenType.DOT:
                 self._advance()
-                method_token = self._expect(TokenType.IDENTIFIER, "E901",
+                member_token = self._expect(TokenType.IDENTIFIER, "E901",
                                             detail="Expected method/property name after '.'")
+                member = MemberAccess(
+                    obj=prefix, member=member_token.lexeme,
+                    span=(prefix.span[0], prefix.span[1],
+                          member_token.line,
+                          member_token.col + len(member_token.lexeme)))
                 if self._check(TokenType.LPAREN):
+                    # method call: obj.method(args) — object carried by callee
                     args = []
                     self._advance()
                     if not self._check(TokenType.RPAREN):
@@ -666,13 +678,9 @@ class Parser:
                                  detail="Expected ')' after arguments")
                     span = (prefix.span[0], prefix.span[1],
                             self._previous().line, self._previous().col + 1)
-                    prefix = CallExpr(
-                        callee=Identifier(name=method_token.lexeme, span=self._span(method_token)),
-                        args=[prefix] + args,
-                        span=span
-                    )
+                    prefix = CallExpr(callee=member, args=args, span=span)
                 else:
-                    prefix = Identifier(name=method_token.lexeme, span=self._span(method_token))
+                    prefix = member
             else:
                 break
         return prefix
@@ -783,9 +791,7 @@ class Parser:
             while self._match(TokenType.COMMA):
                 elements.append(self._parse_expr())
         self._expect(TokenType.RBRACKET, "E901", detail="Expected ']' after reservoir literal")
-        # For now, wrap in a special marker using flood expression
-        return FloodExpr(target=elements[0] if elements else NoneLiteral(span=self._span(start)),
-                         span=self._span(start))
+        return ArrayLiteral(elements=elements, span=self._span(start))
 
     def _parse_call_suffix(self, callee: object) -> object:
         self._advance()  # consume (

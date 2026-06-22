@@ -1,60 +1,56 @@
 // Thirst of Gods Example
-// Demonstrates fountain (class), cascade (async), and spillage (error handling)
+// Demonstrates fountain (class), cascade (async), spillage (error handling),
+// and cleanup — the four deity-contract constructs.
 
 module gods: core
 
 fountain Reservoir {
-    drink contents = []
+    contents: Reservoir
 
-    glass push(val) {
-        mut contents = contents + [val]
+    glass init(self) {
+        self.contents = []
     }
 
-    glass pop() {
-        if size(contents) > 0 {
-            drink last = get(contents, size(contents) - 1)
-            mut contents = pop(contents)
-            return last
-        }
-        return null
+    glass push(self, val) {
+        self.contents = self.contents + [val]
+        return self.contents
     }
 
-    glass size() {
-        return size(contents)
+    glass size(self) {
+        return length(self.contents)
     }
-}
-
-// Cascade (async) example
-glass async_process(items) {
-    drink results = []
-    for item in items {
-        drink result = cascade process_item(item)
-        mut results = results + [result]
-    }
-    return results
 }
 
 glass process_item(item) {
     return "processed: " + item
 }
 
-// Spillage (error handling) example
+// Cascade (async) example — process each item on the pool, awaiting the result.
+glass async_process(items) {
+    drink mut results = []
+    refill (item in items) {
+        drink r = cascade process_item(item)
+        results = results + [r]
+    }
+    return results
+}
+
+// Spillage (error handling) + cleanup example.
 glass safe_process(item) {
     spillage {
-        if item == null {
-            throw "cannot process null item"
-        }
         return "ok: " + item
-    } cleanup {
-        // cleanup runs always
-        return null
+    } error {
+        return "error"
+    }
+    cleanup {
+        return item
+    } finally {
+        return item
     }
 }
 
 // Main
-drink main = |>
-    drink r1 = safe_process("test")
-    r1
-|>
-
-main
+drink jar = new Reservoir()
+drink one = jar.push("a")
+drink result = safe_process("test")
+pour result

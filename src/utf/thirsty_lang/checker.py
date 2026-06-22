@@ -411,6 +411,12 @@ class Checker:
             return VoidType()
         elif isinstance(expr, CondenseExpr):
             return ReservoirType(AnyType())
+        elif isinstance(expr, ArrayLiteral):
+            elem = self._check_expr(expr.elements[0]) if expr.elements else AnyType()
+            return ReservoirType(elem)
+        elif isinstance(expr, MemberAccess):
+            self._check_expr(expr.obj)
+            return AnyType()
         elif isinstance(expr, SanitizeExpr):
             return self._check_expr(expr.expr)
         elif isinstance(expr, ArmorExpr):

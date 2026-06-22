@@ -61,6 +61,8 @@ def cmd_stream(args: list):
 
 
 def main():
+    from utf.console import enable_utf8
+    enable_utf8()
     if len(sys.argv) < 2:
         print("Usage: tscg-b <encode|decode|stream> [args...]")
         sys.exit(1)

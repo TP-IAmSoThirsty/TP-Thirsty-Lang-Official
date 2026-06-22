@@ -131,6 +131,19 @@ class CondenseExpr(Expr):
 
 
 @dataclass
+class ArrayLiteral(Expr):
+    """[e1, e2, ...] reservoir/array literal — evaluates to a list."""
+    elements: list
+
+
+@dataclass
+class MemberAccess(Expr):
+    """obj.member — field read or (as a CallExpr callee) method dispatch."""
+    obj: Expr
+    member: str
+
+
+@dataclass
 class CascadeCall(Expr):
     """Async call with await."""
     expr: Expr

@@ -21,7 +21,8 @@ from utf.thirsty_lang.parser import Parser
 from utf.thirsty_lang.ast import (
     Expr, Stmt, BlockStmt, Program, ShadowThirstMutation,
     VariableDecl, AssignStmt, CallExpr, Identifier, ReturnStmt,
-    ForStmt, WhileStmt, NewExpr, FloodExpr, PourStmt, SipStmt, ImportStmt,
+    ForStmt, WhileStmt, NewExpr, FloodExpr, ArrayLiteral,
+    PourStmt, SipStmt, ImportStmt,
     IntLiteral, FloatLiteral, StringLiteral, BoolLiteral, NoneLiteral,
 )
 
@@ -480,7 +481,7 @@ class MemoryEvaporationAnalyzer:
                 node_count += 1
                 if isinstance(node, NewExpr):
                     allocations += 1000
-                elif isinstance(node, FloodExpr):  # reservoir/list literal or flood
+                elif isinstance(node, (FloodExpr, ArrayLiteral)):  # reservoir / flood
                     allocations += 500
             estimated_peak = node_count * 32 + allocations
             return self._verdict(estimated_peak)

@@ -286,6 +286,16 @@ class Interpreter:
         value = self._evaluate(stmt.value)
         if isinstance(stmt.target, Identifier):
             self.env.set(stmt.target.name, value)
+        elif isinstance(stmt.target, MemberAccess):
+            obj = self._evaluate(stmt.target.obj)
+            if isinstance(obj, FountainInstance):
+                obj.fields[stmt.target.member] = value
+            elif isinstance(obj, dict):
+                obj[stmt.target.member] = value
+            else:
+                raise TypeError(
+                    f"Cannot assign member '{stmt.target.member}' on "
+                    f"{type(obj).__name__}")
         return value
 
     def _execute_if(self, stmt: IfStmt) -> object:
@@ -387,8 +397,9 @@ class Interpreter:
     def _execute_spillage(self, stmt: SpillageStmt) -> object:
         try:
             return self._execute(stmt.body)
-        except GovernanceViolation:
-            # Governance denial is a hard floor — not catchable by user handlers.
+        except (ReturnException, GovernanceViolation):
+            # Control flow (return) and governance denials are not errors —
+            # they must propagate, never be caught by spillage handlers.
             raise
         except SpillageException as e:
             for error_type, handler in stmt.handlers:
@@ -413,13 +424,15 @@ class Interpreter:
         return self._execute(stmt.body)
 
     def _execute_cascade(self, stmt: CascadeCall) -> object:
+        """cascade <call> — async call with await: runs on the pool and
+        resolves to the call's value (not a Future)."""
         if isinstance(stmt.expr, CallExpr):
             callee = self._evaluate(stmt.expr.callee)
             args = [self._evaluate(a) for a in stmt.expr.args]
             if callable(callee):
                 future = self.executor.submit(callee, *args)
-                return future
-        return None
+                return future.result()
+        return self._evaluate(stmt.expr)
 
     def _execute_morph(self, stmt: MorphDef) -> object:
         def transform(*args):
@@ -592,6 +605,10 @@ class Interpreter:
             return self._evaluate_evaporate(expr)
         elif isinstance(expr, CondenseExpr):
             return self._evaluate_condense(expr)
+        elif isinstance(expr, ArrayLiteral):
+            return [self._evaluate_impl(e) for e in expr.elements]
+        elif isinstance(expr, MemberAccess):
+            return self._evaluate_member(expr)
         elif isinstance(expr, SanitizeExpr):
             return self._evaluate(expr.expr)
         elif isinstance(expr, ArmorExpr):
@@ -669,11 +686,15 @@ class Interpreter:
         return None
 
     def _evaluate_flood(self, expr: FloodExpr) -> object:
+        """flood <target> — fill a reservoir from a value.
+
+        If the target is already a reservoir (list) it is returned as-is;
+        otherwise the value is wrapped into a fresh single-element reservoir.
+        """
         target = self._evaluate_impl(expr.target)
-        value = self._evaluate_impl(expr.value)
         if isinstance(target, list):
-            target.append(value)
-        return target
+            return target
+        return [target]
 
     def _evaluate_drip(self, expr: DripExpr) -> object:
         target = self._evaluate_impl(expr.target)
@@ -682,10 +703,10 @@ class Interpreter:
         return None
 
     def _evaluate_evaporate(self, expr: EvaporateExpr) -> object:
+        """evaporate <target> — release a resource; empties a reservoir/map."""
         target = self._evaluate_impl(expr.target)
-        key = self._evaluate_impl(expr.key) if expr.key else None
-        if isinstance(target, dict) and key is not None:
-            return target.pop(key, None)
+        if isinstance(target, (list, dict)):
+            target.clear()
         return None
 
     def _evaluate_condense(self, expr: CondenseExpr) -> object:
@@ -694,12 +715,30 @@ class Interpreter:
             return target.get("value")
         return None
 
+    def _evaluate_member(self, expr: MemberAccess) -> object:
+        """obj.member — read a fountain field, bind a method, or index a map."""
+        obj = self._evaluate_impl(expr.obj)
+        name = expr.member
+        if isinstance(obj, FountainInstance):
+            if name in obj.fields:
+                return obj.fields[name]
+            method = obj.methods.get(name)
+            if method is not None:
+                # Bound method: the instance is passed as the first (self) arg.
+                return lambda *a: self._call_user_fn(method, [obj] + list(a))
+            raise NameError(
+                f"'{obj.cls_decl.name}' has no member '{name}'")
+        if isinstance(obj, dict):
+            return obj.get(name)
+        raise TypeError(
+            f"Cannot access member '{name}' on {type(obj).__name__}")
+
     def _evaluate_new(self, expr: NewExpr) -> object:
-        constructor = self._evaluate_impl(expr.callee)
+        constructor = self.env.get(expr.class_name)
         args = [self._evaluate_impl(a) for a in expr.args]
         if callable(constructor):
             return constructor(*args)
-        raise TypeError(f"Cannot instantiate non-callable: {constructor}")
+        raise TypeError(f"Cannot instantiate non-callable: {expr.class_name}")
 
     def _evaluate_pipeline(self, expr: PipelineExpr) -> object:
         result = None

@@ -1,39 +1,33 @@
 // Governed Agent Runner Example
-// Demonstrates import of governance and Thirst of Gods features
+// Demonstrates governed mode: a `requires` precondition is enforced on every
+// call, and a plain orchestrator wraps work in spillage/cleanup + cascade.
 
 module governed_agent: governed
 
-import 'thirst::crypto' as crypto
-import 'thirst::log' as log
-
-glass validate_identity(token) {
-    drink hash = crypto::sha256(token)
-    return hash
-}
-
-glass governed_action(action_name, data) {
-    spillage {
-        drink token = crypto::uuid4()
-        drink validation = validate_identity(token)
-        
-        // Cascade async processing
-        drink result = cascade process_data(data)
-        
-        log::info("action: " + action_name + " completed")
-        return result
-    } cleanup {
-        log::info("cleanup for: " + action_name)
-    }
+// Governed function: the precondition is enforced at every call site.
+glass validate(token) requires length(token) > 0 {
+    return "valid:" + token
 }
 
 glass process_data(data) {
     return "processed: " + data
 }
 
-// Main governed agent loop
-drink main = |>
-    drink result = governed_action("test_action", "sample data")
-    result
-|>
+glass governed_action(action_name, data) {
+    spillage {
+        drink checked = validate(data)
+        drink result = cascade process_data(data)
+        return result
+    } error {
+        return "failed: " + action_name
+    }
+    cleanup {
+        return action_name
+    } finally {
+        return action_name
+    }
+}
 
-main
+// Main governed agent run
+drink result = governed_action("test_action", "sample data")
+pour result

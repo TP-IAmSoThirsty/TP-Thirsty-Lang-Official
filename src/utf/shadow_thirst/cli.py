@@ -10,6 +10,8 @@ from utf.shadow_thirst.core import (
 
 
 def main():
+    from utf.console import enable_utf8
+    enable_utf8()
     parser = argparse.ArgumentParser(
         description="Shadow Thirst — Mutation Analysis and Promotion Engine"
     )

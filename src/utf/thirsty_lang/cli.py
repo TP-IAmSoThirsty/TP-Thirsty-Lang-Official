@@ -18,6 +18,8 @@ from utf.thirsty_lang import __version__
 
 def main():
     """Main entry point for the Thirsty-Lang CLI."""
+    from utf.console import enable_utf8
+    enable_utf8()
     parser = argparse.ArgumentParser(
         prog="thirsty",
         description="Thirsty-Lang: A governance-first programming language",

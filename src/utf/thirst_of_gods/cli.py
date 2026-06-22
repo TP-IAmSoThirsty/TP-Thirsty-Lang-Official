@@ -165,6 +165,8 @@ def transpile_file(file_path: str, target: str = "thirsty") -> None:
 
 def main():
     """Main entry point for the Thirst of Gods CLI."""
+    from utf.console import enable_utf8
+    enable_utf8()
     parser = argparse.ArgumentParser(
         prog="thirst-of-gods",
         description="Thirst of Gods — Tier 2 governance enforcement CLI",
