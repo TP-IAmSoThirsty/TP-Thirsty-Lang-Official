@@ -34,7 +34,8 @@ def main():
     run_parser.add_argument("--release", action="store_true", help="Suppress verbose error output, show user-friendly messages")
     run_parser.add_argument("--opt", type=int, choices=[0, 1, 2, 3], default=0, help="Optimization level (0-3)")
     run_parser.add_argument("--thirst-level", choices=["core", "governed"], default="core", help="Thirst mode")
-    run_parser.add_argument("--authority", type=str, help="Authority tag for governed mode")
+    run_parser.add_argument("--authority", type=str, help="Authority tag injected into the governance context for governed mode")
+    run_parser.add_argument("--policy", type=str, help="Path to a .tarl policy file to route governed calls through")
     run_parser.add_argument("--demo", action="store_true", help="Run demo program")
     run_parser.add_argument("--locked", action="store_true", help="Require lockfile verification before executing")
 
@@ -158,7 +159,7 @@ def cmd_run(args):
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
     from utf.thirsty_lang.checker import check_ast
-    from utf.thirsty_lang.interpreter import Interpreter
+    from utf.thirsty_lang.interpreter import Interpreter, GovernanceViolation
     from utf.thirsty_lang.diagnostics import DiagnosticBundle
     from utf.thirsty_lang.module_system import load_lockfile
 
@@ -213,10 +214,37 @@ pour result
         print("Lockfile verified. Running with integrity checks enabled.")
 
     interpreter = Interpreter(opt_level=args.opt, debug_mode=args.trace)
+
+    # Governance wiring: bind the authority tag into the governance context,
+    # and route governed calls through a TARL policy engine when --policy
+    # supplies a .tarl file.
+    authority = getattr(args, "authority", None)
+    if authority:
+        interpreter.set_authority(authority)
+    policy_path = getattr(args, "policy", None)
+    if policy_path:
+        if not os.path.isfile(policy_path):
+            print(f"Error: policy file not found: {policy_path}", file=sys.stderr)
+            sys.exit(1)
+        from utf.tarl.core import PolicyParser
+        from utf.tarl.runtime import TarlRuntime
+        with open(policy_path, "r") as pf:
+            policy = PolicyParser.parse(pf.read())
+        interpreter.attach_tarl(TarlRuntime(policy))
+        # A policy with no authority tag still needs a context to evaluate.
+        if authority is None:
+            interpreter.set_authority("")
+
     try:
         result = interpreter.interpret(ast, mode=args.thirst_level)
         if result is not None:
             print(result)
+    except GovernanceViolation as e:
+        print(f"governance denied: {e.name}: {e.reason}", file=sys.stderr)
+        if e.proof is not None:
+            print(f"  proof: verdict={e.proof.verdict} "
+                  f"policy={e.proof.policy_hash}", file=sys.stderr)
+        sys.exit(2)
     except Exception as e:
         if args.release:
             print(f"Error: {e}", file=sys.stderr)

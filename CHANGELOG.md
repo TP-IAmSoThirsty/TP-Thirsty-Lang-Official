@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Real runtime governance enforcement (Thirsty-Lang)
+
+- New `requires` keyword: `glass f(x) requires <expr> { ... }` declares a
+  **governed function** with a precondition (parser now emits
+  `GovernedFunctionDecl` with the parsed `requires_expr`)
+- Interpreter enforces governance on every governed call (`_enforce_governance`),
+  layered and deny-by-default: (1) the `requires` precondition is evaluated and
+  must be truthy; (2) calling a governed function outside `governed` mode is
+  denied (runtime counterpart of `E053`); (3) when a `TarlRuntime` is attached
+  via `Interpreter.attach_tarl(...)`, the call is routed through the policy
+  engine and a non-`ALLOW` verdict denies, recording a signed `TarlProof`
+- New `GovernanceViolation` exception; it is a hard floor — `spillage` handlers
+  cannot catch it
+- CLI `thirsty run` gains `--policy <file.tarl>` (routes governed calls through a
+  policy); `--authority <tag>` now injects the authority tag into the governance
+  context. Denials print `governance denied: …` and exit non-zero
+
+### Changed — Shadow Thirst analyzers now reason over the AST
+
+- All six analyzers parse `shadow`/`invariant`/`canonical` blocks with the real
+  Thirsty-Lang lexer + parser and walk the resulting AST instead of scanning
+  substrings (with a lexical fallback when a block does not parse). Determinism
+  matches non-deterministic *calls* (not like-named variables), Plane Isolation
+  detects real writes into `canonical_*` bindings (not the word in a comment),
+  and Canonical Convergence uses structural AST equivalence (alpha-renamed shape
+  and return arity)
+
+### Changed — Thirst of Gods detection is now structural
+
+- `to_gods()` walks the whole AST and decides the deity contract from real
+  constructs (`CascadeCall`, `SpillageStmt` with handlers, `CleanupStmt`,
+  `ClassDecl` with `init`) found anywhere in the tree, rather than matching
+  functions by name
+
 ---
 
 ## [0.2.0] - 2026-06-20

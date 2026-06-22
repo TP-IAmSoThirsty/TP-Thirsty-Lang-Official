@@ -83,6 +83,7 @@ class TokenType(Enum):
     PROMOTE = auto()
     REJECT = auto()
     GOVERNED = auto()
+    REQUIRES = auto()
     CORE = auto()
     MODULE = auto()
     
@@ -195,6 +196,7 @@ KEYWORDS = {
     "promote": TokenType.PROMOTE,
     "reject": TokenType.REJECT,
     "governed": TokenType.GOVERNED,
+    "requires": TokenType.REQUIRES,
     "enum": TokenType.ENUM,
     "struct": TokenType.STRUCT,
     "interface": TokenType.INTERFACE,

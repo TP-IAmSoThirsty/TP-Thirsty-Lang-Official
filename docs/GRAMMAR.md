@@ -215,7 +215,13 @@ declaration    = function_decl
                | mutation
                | symbol ;
 
-function_decl  = "glass" identifier "(" [param { "," param }] ")" [":" type] block ;
+function_decl  = "glass" identifier "(" [param { "," param }] ")" [":" type]
+                 [ "requires" expr ]                  /* governed precondition */
+                 block ;
+
+/* A function with a `requires` clause is a *governed function*: the interpreter
+   evaluates the precondition on every call and denies (GovernanceViolation) on a
+   falsy result. See docs/governance_model.md § Runtime Enforcement. */
 
 param          = identifier ":" type ;
 
@@ -313,8 +319,13 @@ drink, pour, sip, thirst, thirsty, hydrated, refill, return, spillage,
 cleanup, throw, shield, sanitize, armor, morph, detect, defend, cascade,
 converge, deflect, import, glass, fountain, init, new, enum, struct,
 interface, mutation, symbol, in, true, false, null, quenched, thirsty_error,
-any, never, intent, invariant, and, or, core, strict, pure
+any, never, intent, invariant, and, or, core, strict, pure, governed, requires
 ```
+
+The `requires` keyword introduces a governed-function precondition (see
+`function_decl` in § 6). The `governed` keyword is a module mode
+(`module <name>: governed`) under which governed functions are enforced and
+calls to them from `core` mode are denied.
 
 ---
 

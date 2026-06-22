@@ -23,6 +23,20 @@ class SpillageException(Exception):
         self.value = value
 
 
+class GovernanceViolation(Exception):
+    """Raised when a governed function is denied at runtime.
+
+    Carries the governed function name, a human-readable reason, and the
+    optional ``TarlProof`` produced when the denial came from the policy
+    engine, so callers (the CLI) can surface the proof certificate.
+    """
+    def __init__(self, name: str, reason: str, proof=None):
+        self.name = name
+        self.reason = reason
+        self.proof = proof
+        super().__init__(f"governance denied: {name}: {reason}")
+
+
 class Environment:
     """Scoped variable storage."""
 
@@ -98,6 +112,10 @@ class Interpreter:
         self.mode = "core"
         self.executor = ThreadPoolExecutor(max_workers=4)
         self._last_span = None
+        # Governance wiring (Part A): optional policy engine + authority context.
+        self.tarl_runtime = None
+        self.authority = None
+        self._last_proof = None
         self._register_builtins()
         if self.opt_level >= 2:
             self._inline_simple_builtins()
@@ -239,10 +257,7 @@ class Interpreter:
         elif isinstance(stmt, InterfaceDecl):
             return None
         elif isinstance(stmt, GovernedFunctionDecl):
-            return self._execute_function_decl(FunctionDecl(
-                name=stmt.name, params=stmt.params,
-                return_type=stmt.return_type, body=stmt.body, span=stmt.span
-            ))
+            return self._execute_governed_function_decl(stmt)
         elif isinstance(stmt, ShadowThirstMutation):
             return self._execute_shadow_thirst(stmt)
         return None
@@ -372,6 +387,9 @@ class Interpreter:
     def _execute_spillage(self, stmt: SpillageStmt) -> object:
         try:
             return self._execute(stmt.body)
+        except GovernanceViolation:
+            # Governance denial is a hard floor — not catchable by user handlers.
+            raise
         except SpillageException as e:
             for error_type, handler in stmt.handlers:
                 return self._execute(handler)
@@ -426,10 +444,100 @@ class Interpreter:
             return self._execute(stmt.canonical_block)
         return None
 
-    def _enforce_governance(self, context: dict) -> bool:
+    def attach_tarl(self, runtime) -> "Interpreter":
+        """Wire a TARL policy engine for governed-function routing.
+
+        ``runtime`` is a ``utf.tarl.runtime.TarlRuntime``.  Passing it here
+        (rather than importing at module load) keeps thirsty_lang decoupled
+        from tarl unless governance is actually used.  Returns self.
+        """
+        self.tarl_runtime = runtime
+        return self
+
+    def set_authority(self, authority) -> "Interpreter":
+        """Set the authority context consulted during governed calls."""
+        self.authority = authority
+        return self
+
+    def _execute_governed_function_decl(self, stmt: GovernedFunctionDecl):
+        """Define a governed function whose precondition is enforced per call."""
+        def fn(*args):
+            old_env = self.env
+            self.env = self.env.enter_scope()
+            context = {}
+            for i, (pname, _) in enumerate(stmt.params):
+                val = args[i] if i < len(args) else None
+                self.env.define(pname, val, is_mut=False)
+                context[pname] = val
+            try:
+                allowed, reason, proof = self._enforce_governance(context, stmt)
+                self._last_proof = proof
+                if not allowed:
+                    raise GovernanceViolation(stmt.name, reason, proof)
+                result = None
+                try:
+                    result = self._execute(stmt.body)
+                except ReturnException as e:
+                    result = e.value
+                return result
+            finally:
+                self.env = old_env
+        self.env.define(stmt.name, fn, is_mut=False)
+        return fn
+
+    def _enforce_governance(self, context: dict, decl=None):
+        """Decide whether a governed call is allowed. Default-deny in governed mode.
+
+        Returns ``(allowed: bool, reason: str, proof)``. Layered policy:
+          1. In-language precondition (``requires`` expr) — must be truthy.
+          2. Cross-mode guard — a governed function called from non-governed
+             mode is denied (runtime counterpart of checker E053).
+          3. Optional TARL routing — if a policy engine and authority are
+             present, a non-ALLOW verdict denies and a proof is returned.
+          4. Default — allow only if an explicit allow was produced; otherwise
+             deny when running in governed mode.
+        """
+        proof = None
+        explicit_allow = False
+
+        # 2. Cross-mode guard: governed functions require governed mode.
+        if decl is not None and self.mode != "governed":
+            return (False,
+                    "governed function invoked outside governed mode", None)
+
+        # 1. In-language precondition.
+        if decl is not None and getattr(decl, "requires_expr", None) is not None:
+            try:
+                if self._evaluate(decl.requires_expr):
+                    explicit_allow = True
+                else:
+                    annotation = decl.requires_annotation or "<precondition>"
+                    return (False,
+                            f"precondition failed: requires {annotation}", None)
+            except Exception as exc:
+                return (False, f"precondition error: {exc}", None)
+
+        # 3. Optional TARL policy routing.
+        if self.tarl_runtime is not None and self.authority is not None:
+            from utf.tarl.spec import TarlVerdict
+            policy_ctx = dict(context)
+            policy_ctx["authority"] = self.authority
+            if decl is not None:
+                policy_ctx.setdefault("action", decl.name)
+            decision, proof = self.tarl_runtime.evaluate_with_proof(policy_ctx)
+            if decision.verdict == TarlVerdict.ALLOW:
+                explicit_allow = True
+            else:
+                reason = decision.reason or f"policy verdict: {decision.verdict}"
+                return (False, reason, proof)
+
+        # 4. Default: deny in governed mode without an explicit allow.
+        if explicit_allow:
+            return (True, "allowed", proof)
         if self.mode == "governed":
-            return True
-        return True
+            return (False, "default-deny: no governing predicate granted access",
+                    proof)
+        return (True, "allowed", proof)
 
     def _call_user_fn(self, func_decl: FunctionDecl, args: list) -> object:
         old_env = self.env

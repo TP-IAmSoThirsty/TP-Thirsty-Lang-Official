@@ -317,12 +317,19 @@ class InterfaceDecl(Stmt):
 
 @dataclass
 class GovernedFunctionDecl(Stmt):
-    """Governed function with requires annotation."""
+    """Governed function with a `requires` precondition.
+
+    ``requires_annotation`` holds the source-text form of the precondition
+    (used by the formatter, the CLI module-info path, and checker E052).
+    ``requires_expr`` holds the parsed precondition AST that the interpreter
+    evaluates at call time to enforce governance.
+    """
     name: str
     params: list
     return_type: Optional[str]
     body: Stmt
     requires_annotation: Optional[str] = None
+    requires_expr: Optional[Expr] = None
 
 
 # === Module & Program ===

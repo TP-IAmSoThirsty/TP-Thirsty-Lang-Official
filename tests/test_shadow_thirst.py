@@ -105,9 +105,9 @@ class TestAnalyzers:
         # Shadow code that doesn't write canonical state
         module = ShadowModule(
             name="test",
-            shadow_code="let x = compute(input)",
+            shadow_code="drink x = compute(input)",
             invariant_code="x > 0",
-            canonical_code="let result = compute(input)"
+            canonical_code="drink result = compute(input)"
         )
         result = analyzer.analyze(module)
         assert result.passed is True
@@ -118,7 +118,7 @@ class TestAnalyzers:
         # Deterministic shadow code
         module = ShadowModule(
             name="test",
-            shadow_code="let x = input + 1",
+            shadow_code="drink x = input + 1",
             invariant_code="",
             canonical_code=""
         )
@@ -127,10 +127,10 @@ class TestAnalyzers:
 
     def test_determinism_analyzer_fail(self):
         analyzer = DeterminismAnalyzer()
-        # Shadow code with now/rand - should fail
+        # Shadow code that CALLS a non-deterministic function — should fail
         module = ShadowModule(
             name="test",
-            shadow_code="let now = get_time()",
+            shadow_code="drink x = get_time()",
             invariant_code="",
             canonical_code=""
         )
@@ -141,7 +141,7 @@ class TestAnalyzers:
         analyzer = ResourceEstimator()
         module = ShadowModule(
             name="test",
-            shadow_code="let x = [1,2,3]",
+            shadow_code="drink x = [1,2,3]",
             invariant_code="",
             canonical_code=""
         )
@@ -166,7 +166,7 @@ class TestAnalyzers:
         analyzer = MemoryEvaporationAnalyzer()
         module = ShadowModule(
             name="test",
-            shadow_code="let x = [1,2,3,4,5]",
+            shadow_code="drink x = [1,2,3,4,5]",
             invariant_code="",
             canonical_code=""
         )
@@ -177,9 +177,9 @@ class TestAnalyzers:
         analyzer = CanonicalConvergenceAnalyzer()
         module = ShadowModule(
             name="test",
-            shadow_code="let x = compute(input)",
+            shadow_code="drink x = compute(input)",
             invariant_code="",
-            canonical_code="let x = compute(input)"
+            canonical_code="drink x = compute(input)"
         )
         result = analyzer.analyze(module)
         assert result.name == "CanonicalConvergence"
@@ -197,6 +197,73 @@ class TestAnalyzers:
         assert result.name == "CanonicalConvergence"
         # Without both blocks, should not pass
         assert result.passed is False
+
+
+class TestASTUpgrade:
+    """Prove the analyzers reason over the AST, not substrings."""
+
+    def test_determinism_variable_named_nowhere_passes(self):
+        # Substring grep for 'now' would FAIL this; AST only flags calls.
+        analyzer = DeterminismAnalyzer()
+        module = ShadowModule(name="t", shadow_code="drink nowhere = compute(input)")
+        assert module.shadow_ast is not None
+        assert analyzer.analyze(module).passed is True
+
+    def test_determinism_real_nondeterministic_call_fails(self):
+        analyzer = DeterminismAnalyzer()
+        module = ShadowModule(name="t", shadow_code="drink x = now()")
+        result = analyzer.analyze(module)
+        assert result.passed is False
+        assert "now" in result.message
+
+    def test_plane_isolation_canonical_in_comment_passes(self):
+        # A comment mentioning 'canonical.' is not a node — AST ignores it.
+        analyzer = PlaneIsolationAnalyzer()
+        module = ShadowModule(
+            name="t",
+            shadow_code="drink x = compute(input)  // reads canonical.ledger",
+        )
+        assert module.shadow_ast is not None
+        assert analyzer.analyze(module).passed is True
+
+    def test_plane_isolation_real_canonical_write_fails(self):
+        analyzer = PlaneIsolationAnalyzer()
+        module = ShadowModule(name="t", shadow_code="drink canonical_state = 5")
+        assert analyzer.analyze(module).passed is False
+
+    def test_convergence_alpha_equivalent_passes(self):
+        # Same structure, different variable names -> converge.
+        analyzer = CanonicalConvergenceAnalyzer()
+        module = ShadowModule(
+            name="t",
+            shadow_code="drink x = compute(input)\nreturn x",
+            canonical_code="drink result = compute(input)\nreturn result",
+        )
+        assert analyzer.analyze(module).passed is True
+
+    def test_convergence_structural_divergence_fails(self):
+        analyzer = CanonicalConvergenceAnalyzer()
+        module = ShadowModule(
+            name="t",
+            shadow_code="for i in items { pour i }\nreturn x",
+            canonical_code="return x",
+        )
+        assert analyzer.analyze(module).passed is False
+
+    def test_purity_impure_invariant_call_fails(self):
+        analyzer = PuritySpringAnalyzer()
+        module = ShadowModule(name="t", invariant_code="pour x")
+        assert analyzer.analyze(module).passed is False
+
+    def test_lexical_fallback_when_ast_unavailable(self):
+        # When a block has no AST (parse failure), the analyzer still produces
+        # a verdict via the original substring heuristic.
+        analyzer = DeterminismAnalyzer()
+        module = ShadowModule(name="t", shadow_code="x = now")
+        module.shadow_ast = None  # simulate a parse failure
+        result = analyzer.analyze(module)
+        assert result.passed is False
+        assert "lexical" in result.message
 
 
 class TestPromotionEngine:

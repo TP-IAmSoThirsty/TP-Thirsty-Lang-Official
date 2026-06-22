@@ -131,7 +131,7 @@ class Parser:
                      TokenType.THIRSTY, TokenType.REFILL, TokenType.RETURN,
                      TokenType.IMPORT, TokenType.GLASS, TokenType.FOUNTAIN,
                      TokenType.SPILLAGE, TokenType.SHIELD, TokenType.MUTATION,
-                     TokenType.RBRACE, TokenType.EOF):
+                     TokenType.REQUIRES, TokenType.RBRACE, TokenType.EOF):
                 return
             self._advance()
 
@@ -334,7 +334,21 @@ class Parser:
             type_token = self._expect(TokenType.IDENTIFIER, "E901",
                                       detail="Expected return type after '->'")
             return_type = type_token.lexeme
+        requires_expr = None
+        requires_annotation = None
+        if self._match(TokenType.REQUIRES):
+            req_start = self.current
+            requires_expr = self._parse_expr()
+            requires_annotation = " ".join(
+                t.lexeme for t in self.tokens[req_start:self.current]
+            )
         body = self._parse_block()
+        if requires_expr is not None:
+            return GovernedFunctionDecl(
+                name=name_token.lexeme, params=params,
+                return_type=return_type, body=body,
+                requires_annotation=requires_annotation,
+                requires_expr=requires_expr, span=self._span(start))
         return FunctionDecl(name=name_token.lexeme, params=params,
                             return_type=return_type, body=body, span=self._span(start))
 

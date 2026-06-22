@@ -215,12 +215,22 @@ Mutation analysis and invariant verification.
 
 ### Built-in Analyzers
 
-1. **Plane Isolation** — Detects cross-plane data flow
-2. **Determinism** — Verifies deterministic execution
-3. **Resource Estimation** — Estimates resource usage
-4. **Purity Spring** — Checks function purity
-5. **Memory Evaporation** — Detects memory leaks
-6. **Canonical Convergence** — Verifies canonical forms
+The analyzers parse each `shadow` / `invariant` / `canonical` block with
+Thirsty-Lang's own lexer + parser and reason over the resulting **AST** (with a
+lexical fallback when a block does not parse):
+
+1. **Plane Isolation** — Walks the shadow block for writes into `canonical_*`
+   bindings or calls into the canonical plane
+2. **Determinism** — Flags *calls* to non-deterministic functions (`now()`,
+   `rand()`, `uuid()`, …), not like-named variables
+3. **Resource Estimation** — Estimates CPU/memory from loop, call, and
+   allocation nodes
+4. **Purity Spring** — Checks the invariant block for impure calls / output
+   statements
+5. **Memory Evaporation** — Counts allocation nodes (`new`, reservoir literals,
+   floods)
+6. **Canonical Convergence** — Compares shadow and canonical via structural AST
+   equivalence (alpha-renamed shape + return arity)
 
 ---
 

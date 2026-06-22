@@ -105,13 +105,14 @@ fountain Counter {
 }
 ```
 
-**What exists:** The validator (`to_gods()`) checks your code for:
-- Must fountain init method? ✓
-- Every cascade has an error-aware consumer? ✓
-- Spillage blocks have at least one handler? ✓
-- Cleanup resources declared? ✓
+**What exists:** The validator (`to_gods()`) walks the **real AST** and checks your code for:
 
-If your code doesn't satisfy the divine contract, it tells you. This is not decorative.
+- A fountain (class) with an `init` method? ✓
+- A real `cascade` call (`CascadeCall` node), anywhere in the tree? ✓
+- A `spillage` block with at least one handler? ✓
+- A real `cleanup` block? ✓
+
+Detection is **structural, not name-based**: a `CascadeCall`/`SpillageStmt`/`CleanupStmt` is found wherever it lives — inside a method body or a nested block — and a function merely *named* something suggestive doesn't satisfy the contract. If your code doesn't satisfy the divine contract, it tells you. This is not decorative.
 
 ### 🟢 Tier 3: T.A.R.L. — Thirsty's Active Resistance Language
 
@@ -127,6 +128,19 @@ policy access_control:
 
 **What exists:** `TarlEngine`, `TarlPolicy`, `TarlRule`, `TarlVerdict` (ALLOW/DENY/ESCALATE), `PolicyParser`, `SafeExpr`, LRU-cached evaluation, adaptive policy ordering. Import it from Python and evaluate policies programmatically. First-match-wins semantics. Default-DENY when no rule matches.
 
+**Runtime enforcement in the language:** a governed function declares a precondition with `requires`, and the interpreter enforces it on every call — layered and default-deny:
+
+```thirsty
+module bank: governed
+glass withdraw(amt) requires amt > 0 {
+    return amt * 2
+}
+```
+
+1. **In-language precondition** — the `requires` expression is evaluated at call time; a falsy result raises `GovernanceViolation`.
+2. **Cross-mode guard** — a governed function invoked outside `governed` mode is denied (the runtime counterpart of checker error `E053`).
+3. **T.A.R.L. routing** — attach a policy engine (`Interpreter.attach_tarl(...)`, or `thirsty run … --authority <tag> --policy <file.tarl>`); a non-ALLOW verdict denies and a signed `TarlProof` is recorded. Governance denials are a hard floor — `spillage` handlers cannot swallow them.
+
 ### 🟡 Tier 4: Shadow Thirst
 
 Mutation analysis and invariant verification. **Code cannot promote unless it passes.**
@@ -138,13 +152,16 @@ shadow analyze_memory:
 promote
 ```
 
-**What exists: 6 analyzers that actually run:**
-1. **Plane Isolation** — detects cross-plane data flow (data leaking between security domains)
-2. **Determinism** — verifies your code produces the same output for the same input
-3. **Resource Estimation** — estimates memory and time bounds
-4. **Purity Spring** — checks if functions have side effects
-5. **Memory Evaporation** — detects memory leaks in your Thirsty-Lang code
-6. **Canonical Convergence** — verifies that your program's behavior converges to a canonical form
+**What exists: 6 analyzers that run over the real parsed AST** (Thirsty-Lang's own lexer + parser), not over substrings of the source — so a variable merely *named* `nowhere` no longer trips the determinism check, and the word "canonical" in a comment no longer trips plane isolation:
+
+1. **Plane Isolation** — walks the shadow block for writes into `canonical_*` bindings or calls into the canonical plane
+2. **Determinism** — flags *calls* to non-deterministic functions (`now()`, `rand()`, `uuid()`, …), distinguishing a call from a like-named variable
+3. **Resource Estimation** — estimates CPU/memory from loop, call, and allocation **nodes**
+4. **Purity Spring** — checks the invariant block for impure calls / output statements
+5. **Memory Evaporation** — counts allocation nodes (`new`, reservoir literals, floods)
+6. **Canonical Convergence** — compares shadow and canonical via **structural AST equivalence** (alpha-renamed shape + return arity)
+
+When a block can't be parsed, each analyzer falls back to the original lexical heuristic so partial input still yields a verdict.
 
 **Return codes:** `PromotionEngine` issues a verdict — if critical analyzers fail, promotion is **blocked**. Your code cannot graduate to production.
 

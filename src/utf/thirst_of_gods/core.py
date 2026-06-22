@@ -4,14 +4,43 @@ The Thirst of Gods tier validates and enforces deity-level contracts
 on Thirsty-Lang programs. It operates on the existing AST from
 src.utf.thirsty_lang.ast and provides governance interpretation.
 """
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
 from utf.thirsty_lang.ast import (
     Program, FunctionDecl, ClassDecl, SpillageStmt, CleanupStmt,
-    ThrowStmt, CascadeCall, CallExpr, Identifier,
+    CascadeCall,
 )
 from utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticSeverity
+
+
+def _walk(node):
+    """Yield ``node`` and every nested AST node (pre-order).
+
+    Works over any Thirsty-Lang AST dataclass (Program, ModuleHeader, and every
+    Expr/Stmt subclass), recursing through dataclass fields and lists/tuples.
+    This is what makes deity-contract detection *structural*: a real
+    ``CascadeCall`` or ``SpillageStmt`` is found wherever it lives — inside a
+    method body, a nested block, a spillage body — not by matching a function's
+    name.
+    """
+    if node is None or not dataclasses.is_dataclass(node):
+        return
+    yield node
+    for f in dataclasses.fields(node):
+        if f.name == "span":
+            continue
+        value = getattr(node, f.name)
+        yield from _walk_value(value)
+
+
+def _walk_value(value):
+    if dataclasses.is_dataclass(value):
+        yield from _walk(value)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _walk_value(item)
 
 
 class ThirstOfGodsError(Exception):
@@ -61,52 +90,29 @@ def to_gods(ast: Program) -> DeityContract:
     has_cascade_handler = False
     has_spillage_handler = False
     has_cleanup = False
-    violations: list[str] = []
 
-    # Scan all top-level statements
-    for stmt in ast.stmts:
-        # Check for fountain: either a ClassDecl with init, or a FunctionDecl named "fountain"
-        if isinstance(stmt, ClassDecl):
-            for method in stmt.methods:
-                if method.name == "init":
-                    has_fountain_init = True
-                    break
-        if isinstance(stmt, FunctionDecl) and stmt.name.lower() == "fountain":
-            has_fountain_init = True
-
-        # Check for a standalone spillage statement with handlers
-        if isinstance(stmt, SpillageStmt):
-            if stmt.handlers:
+    # A single structural walk over the whole AST — into every function/method
+    # body and nested block — decides the four contract signals from the real
+    # constructs present, never from what a function happens to be *named*.
+    for node in _walk(ast):
+        if isinstance(node, ClassDecl):
+            if any(getattr(m, "name", None) == "init" for m in node.methods):
+                has_fountain_init = True
+        elif isinstance(node, CascadeCall):
+            has_cascade_handler = True
+        elif isinstance(node, SpillageStmt):
+            if node.handlers:
                 has_spillage_handler = True
-
-        # Check for a standalone cleanup statement
-        if isinstance(stmt, CleanupStmt):
+        elif isinstance(node, CleanupStmt):
             has_cleanup = True
 
-        # Check for function declarations named cascade, spillage, cleanup
-        if isinstance(stmt, FunctionDecl):
-            name_lower = stmt.name.lower()
-            if name_lower == "cascade" and stmt.params:
-                has_cascade_handler = True
-            if name_lower == "spillage" and stmt.params:
-                has_spillage_handler = True
-            if name_lower == "cleanup" and stmt.params:
-                has_cleanup = True
-
-        # Recursively scan inside function bodies for cascade calls with spillage
-        if isinstance(stmt, FunctionDecl):
-            _scan_for_cascade_and_spillage(stmt, violations)
-
-    # Build violation list for missing contracts
+    violations: list[str] = []
     if not has_fountain_init:
         violations.append("Missing fountain with init method")
-
     if not has_cascade_handler:
         violations.append("Missing cascade handler with error handling")
-
     if not has_spillage_handler:
         violations.append("Missing spillage block with error handlers")
-
     if not has_cleanup:
         violations.append("Missing cleanup block")
 
@@ -117,80 +123,6 @@ def to_gods(ast: Program) -> DeityContract:
         has_cleanup=has_cleanup,
         violations=violations,
     )
-
-
-def _scan_for_cascade_and_spillage(stmt, violations: list[str]):
-    """Recursively scan a statement for cascade calls inside spillage blocks."""
-    from utf.thirsty_lang.ast import (
-        BlockStmt, SpillageStmt, IfStmt, WhileStmt,
-        ForStmt, ReturnStmt, ExprStmt, VariableDecl, AssignStmt,
-    )
-
-    if isinstance(stmt, BlockStmt):
-        for s in stmt.statements:
-            _scan_for_cascade_and_spillage(s, violations)
-
-    elif isinstance(stmt, SpillageStmt):
-        if stmt.handlers:
-            if "Missing cascade handler with error handling" in violations:
-                violations.remove("Missing cascade handler with error handling")
-
-    elif isinstance(stmt, IfStmt):
-        _scan_for_cascade_and_spillage(stmt.then_block, violations)
-        if stmt.else_block:
-            _scan_for_cascade_and_spillage(stmt.else_block, violations)
-
-    elif isinstance(stmt, WhileStmt):
-        _scan_for_cascade_and_spillage(stmt.body, violations)
-
-    elif isinstance(stmt, ForStmt):
-        _scan_for_cascade_and_spillage(stmt.body, violations)
-
-    elif isinstance(stmt, ReturnStmt):
-        if stmt.value:
-            _scan_expr_for_cascade(stmt.value, violations)
-
-    elif isinstance(stmt, ExprStmt):
-        _scan_expr_for_cascade(stmt.expr, violations)
-
-    elif isinstance(stmt, VariableDecl):
-        if stmt.init_expr:
-            _scan_expr_for_cascade(stmt.init_expr, violations)
-
-    elif isinstance(stmt, AssignStmt):
-        _scan_expr_for_cascade(stmt.value, violations)
-
-
-def _scan_expr_for_cascade(expr, violations: list[str]):
-    """Recursively scan expressions for cascade calls."""
-    from utf.thirsty_lang.ast import (
-        BinaryOp, UnaryOp, CallExpr, PipeExpr, GuardExpr,
-        CascadeCall, FloodExpr, DripExpr,
-    )
-
-    if isinstance(expr, CascadeCall):
-        if "Missing cascade handler with error handling" in violations:
-            violations.remove("Missing cascade handler with error handling")
-
-    elif isinstance(expr, BinaryOp):
-        _scan_expr_for_cascade(expr.left, violations)
-        _scan_expr_for_cascade(expr.right, violations)
-
-    elif isinstance(expr, UnaryOp):
-        _scan_expr_for_cascade(expr.operand, violations)
-
-    elif isinstance(expr, CallExpr):
-        _scan_expr_for_cascade(expr.callee, violations)
-        for arg in expr.args:
-            _scan_expr_for_cascade(arg, violations)
-
-    elif isinstance(expr, PipeExpr):
-        _scan_expr_for_cascade(expr.left, violations)
-        _scan_expr_for_cascade(expr.right, violations)
-
-    elif isinstance(expr, GuardExpr):
-        _scan_expr_for_cascade(expr.expr, violations)
-        _scan_expr_for_cascade(expr.condition, violations)
 
 
 def validate_deity_contract(ast: Program) -> list[Diagnostic]:

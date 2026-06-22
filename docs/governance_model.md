@@ -61,20 +61,53 @@ T.A.R.L. expressions are evaluated in a **sandboxed environment**:
 
 ## Integration with Thirsty-Lang
 
-### Tier 1 (Core Language)
+### Runtime Enforcement (the interpreter, today)
 
-Tier 1 requires T.A.R.L. policies for:
-- **Module imports** — which modules may be loaded
-- **Function definitions** — which functions may be defined at module/global scope
-- **Variable access** — which variables may be read/written
+Governance is enforced at runtime for **governed functions** — functions that
+declare a precondition with `requires`:
 
-### Tier 2+ (Extended Governance)
+```thirsty
+module bank: governed
+glass withdraw(amt) requires amt > 0 {
+    return amt * 2
+}
+```
 
-Higher tiers extend governance to:
-- **Task scheduling** — which tasks may execute and with what priority
-- **Network operations** — which hosts/ports may be accessed
-- **Filesystem operations** — which paths may be read/written
-- **Interop with external systems** — which integrations are allowed
+On **every call** to a governed function, the interpreter applies a layered,
+default-deny decision (`Interpreter._enforce_governance`):
+
+1. **In-language precondition** — the `requires` expression is evaluated in the
+   call scope. A falsy result denies the call and raises `GovernanceViolation`.
+2. **Cross-mode guard** — a governed function invoked while the program is not
+   in `governed` mode is denied (the runtime counterpart of checker error
+   `E053`, "cannot call governed function from core mode").
+3. **T.A.R.L. routing** — when a `TarlRuntime` is attached
+   (`interpreter.attach_tarl(runtime)`) and an authority context is set, the
+   call is routed through the policy engine. A non-`ALLOW` verdict denies, and
+   the signed `TarlProof` is recorded on `interpreter._last_proof`.
+4. **Default** — in `governed` mode, a call that no layer explicitly allowed is
+   **denied** (deny-by-default).
+
+A `GovernanceViolation` is a hard floor: `spillage` error handlers do **not**
+catch it, so governed denials cannot be swallowed by user error handling.
+
+From the CLI:
+
+```bash
+thirsty run program.thirsty --thirst-level governed \
+    --authority admin --policy access.tarl
+```
+
+`--authority` injects the authority tag into the governance context; `--policy`
+routes governed calls through the named `.tarl` policy. A denial prints
+`governance denied: <fn>: <reason>` (with the proof verdict/hash when policy
+routing produced one) and exits non-zero.
+
+### Roadmap (extended governance)
+
+Future tiers aim to extend governance gates to module imports, task scheduling,
+network operations, filesystem operations, and external interop. These are not
+yet enforced by the interpreter.
 
 ## Runtime Evaluation
 
