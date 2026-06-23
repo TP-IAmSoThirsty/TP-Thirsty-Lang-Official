@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-06-22
+
+This release makes the governance stack durable: the language runs its own
+surface, governance is maximal, the semantic verifiers reason (and prove)
+rather than grep, and CI is the gate.
+
+### Added — Maximal governance
+
+- `ensures` postconditions (`result` bound after the body) and `invariant`
+  predicates checked at both call entry and exit, on functions **and** methods
+  (design-by-contract, valid in any mode).
+- Capability gates: in governed mode, module imports and I/O (`pour`/`sip`) are
+  routed through the attached `TarlRuntime` (`evaluate_with_proof`), deny-by-
+  default, with a signed `TarlProof` on denial. Time-windowed policies govern a
+  call through the same path.
+- Checker: function/class **hoisting** (forward references and mutual recursion
+  now resolve), static **E053** for a governed call from `core` mode.
+
+### Added — Layered semantic verifiers
+
+- **Convergence** (Shadow Thirst) is now three layers: alpha-renamed structural
+  AST equality (a sufficient fast proof), **Z3** symbolic equivalence over the
+  integer-arithmetic subset (`thirsty-lang[analysis]`; each query in an isolated
+  `z3.Context`, hardened to fall back on any native failure), and
+  **execute-and-compare** over seeded inputs that reports the diverging input as
+  a counterexample. Equal-but-differently-shaped blocks now promote; subtly
+  different ones reject with a witness. The sampling layer abstains on blocks
+  with observable effects.
+- **Determinism** is a taint dataflow (`EffectAnalysis`): non-determinism is
+  followed through aliases to a fixpoint, closing the "alias `now` into a
+  variable and call it" evasion.
+- **Thirst of Gods** links each `cascade` to an enclosing `spillage` handler by
+  lexical containment, so "every cascade has an error-aware consumer" is
+  literally enforced rather than mere co-presence.
+
+### Added — Correctness floor
+
+- Real array/reservoir literals, working `flood`/`evaporate`/`new`, variable
+  reassignment, OOP member access + method dispatch, `cascade` await, and
+  `spillage` no longer swallowing `return`. UTF-8-safe CLI output on Windows.
+- Every shipped example parses, type-checks, and runs in CI
+  (`tests/test_examples.py`).
+
+### Added — Stability
+
+- CI now runs `ruff`, the full suite on 3.11/3.12 with a 55% coverage floor, and
+  executes every example through its CLI; a wheel-build/import smoke job remains.
+- Cleared the full ruff lint debt (883 → 0) under the project config; replaced
+  `import *` with explicit imports across the core language modules.
+- New `docs/STATUS.md` feature matrix maps every capability to a test; grammar
+  docs reconciled to the implemented surface.
+
+### Fixed
+
+- `_evaluate_new`, `_evaluate_flood`, `_evaporate` read AST fields the nodes did
+  not have; reassignment was a silent no-op; member access was unimplemented.
+
+---
+
 ## [0.3.0] - 2026-06-22
 
 ### Added — Real runtime governance enforcement (Thirsty-Lang)

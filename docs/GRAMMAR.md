@@ -69,15 +69,11 @@ whitespace     = ' ' | '\t' | '\r' | newline ;
 ```
 program        = module_header { import_stmt } { declaration } EOF ;
 
-module_header  = ["thirsty"] [module_mode] ";"
-               | "thirst" string ";"
-               | ";" ;
+module_header  = "module" identifier ":" module_mode ;
 
-module_mode    = "core" | "strict" | "pure" ;
+module_mode    = "core" | "governed" ;
 
-import_stmt    = "import" path ";" ;
-
-path           = identifier { "." identifier } ;
+import_stmt    = "import" string [ "as" identifier ] ;
 ```
 
 ---
@@ -104,7 +100,7 @@ Expressions are listed in order of **increasing precedence** (lowest first).
 ```
 expr           = assignment ;
 
-assignment     = pipeline ( ":=" | "=" ) expr       /* if LHS is assignable */
+assignment     = pipeline "=" expr                  /* if LHS is assignable */
                | pipeline ;
 
 pipeline       = pipe { "|" pipe } ;
@@ -179,7 +175,7 @@ pour_stmt      = "pour" expr ";" ;
 
 sip_stmt       = "sip" identifier [ "=" expr ] ";" ;
 
-assign_stmt    = expr ":=" expr ";" ;
+assign_stmt    = expr "=" expr ";" ;
 
 if_stmt        = "thirsty" "(" expr ")" block
                  { "hydrated" "thirsty" "(" expr ")" block }
@@ -298,7 +294,7 @@ tuple_pattern  = "(" [pattern { "," pattern }] ")" ;
 
 | Level | Operators | Associativity |
 |-------|-----------|---------------|
-| 1 (lowest) | `:=` `=` | right |
+| 1 (lowest) | `=` | right |
 | 2 | `\|\|` | left |
 | 3 | `or` | left |
 | 4 | `and` | left |
@@ -315,11 +311,15 @@ tuple_pattern  = "(" [pattern { "," pattern }] ")" ;
 ## 9. Keywords
 
 ```
-drink, pour, sip, thirst, thirsty, hydrated, refill, return, spillage,
-cleanup, throw, shield, sanitize, armor, morph, detect, defend, cascade,
-converge, deflect, import, glass, fountain, init, new, enum, struct,
-interface, mutation, symbol, in, true, false, null, quenched, thirsty_error,
-any, never, intent, invariant, and, or, core, strict, pure, governed, requires
+drink, pour, sip, thirsty, hydrated, thirst, quench, refill, times,
+glass, reservoir, well, of, flood, drip, evaporate, condense, fountain,
+return, parched, quenched, empty, mut, in, import, from, as,
+shield, sanitize, armor, morph, detect, defend, cascade, this, new,
+public, private, await, spillage, cleanup, finally, error, throw,
+policy, when, allow, deny, escalate, mutation, validated_canonical,
+invariant, shadow, canonical, promote, reject, governed, requires, ensures,
+enum, struct, interface, symbol, module, core, and, or, not,
+true, false, none
 ```
 
 The `requires` keyword introduces a governed-function precondition (see
