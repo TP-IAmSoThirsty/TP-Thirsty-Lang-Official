@@ -1,15 +1,25 @@
 """
 Unit tests for Thirsty-Lang core: lexer, parser, checker, interpreter.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from utf.thirsty_lang.token import TokenType, Token
-from utf.thirsty_lang.lexer import Lexer
-from utf.thirsty_lang.ast import *
-from utf.thirsty_lang.parser import Parser
+from utf.thirsty_lang.ast import (
+    BinaryOp,
+    ExprStmt,
+    FunctionDecl,
+    IfStmt,
+    IntLiteral,
+    Program,
+    StringLiteral,
+    WhileStmt,
+)
 from utf.thirsty_lang.interpreter import Interpreter
+from utf.thirsty_lang.lexer import Lexer
+from utf.thirsty_lang.parser import Parser
+from utf.thirsty_lang.token import TokenType
 
 
 class TestLexer:

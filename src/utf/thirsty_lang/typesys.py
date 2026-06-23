@@ -3,7 +3,6 @@ Thirsty-Lang Type System
 Base types, generic types, unification, and assignability checking.
 """
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 
 class Type:
@@ -147,7 +146,7 @@ TYPE_NAME_MAP = {
 def type_from_name(name: str) -> Type:
     """Convert a type name string to a Type object. Handles generic syntax like Quenched[Int]."""
     name = name.strip()
-    
+
     # Check for generic type pattern: BaseType[Args]
     if "[" in name and name.endswith("]"):
         base = name[:name.index("[")].strip()
@@ -170,7 +169,7 @@ def type_from_name(name: str) -> Type:
                 current += ch
         if current.strip():
             inner_types.append(type_from_name(current.strip()))
-        
+
         base_lower = base.lower()
         if base_lower == "quenched":
             return QuenchedType(inner_types[0] if inner_types else AnyType())
@@ -186,12 +185,12 @@ def type_from_name(name: str) -> Type:
         else:
             # Unknown generic — treat base as custom type
             return GenericType(base_type=base, type_args=inner_types)
-    
+
     # Simple type lookup
     cls = TYPE_NAME_MAP.get(name)
     if cls:
         return cls()
-    
+
     # Try as a named type (enum, struct, interface)
     return AnyType()  # Fallback
 
@@ -220,7 +219,7 @@ def unify(t1: Type, t2: Type) -> Type:
             return ReservoirType(inner)
         if isinstance(t1, FunctionType) and isinstance(t2, FunctionType):
             if len(t1.param_types) == len(t2.param_types):
-                params = [unify(p1, p2) for p1, p2 in zip(t1.param_types, t2.param_types)]
+                params = [unify(p1, p2) for p1, p2 in zip(t1.param_types, t2.param_types, strict=False)]
                 ret = unify(t1.return_type, t2.return_type)
                 return FunctionType(params, ret)
         return t1
@@ -247,7 +246,7 @@ def is_assignable(source: Type, target: Type) -> bool:
         if isinstance(source, FunctionType) and isinstance(target, FunctionType):
             if len(source.param_types) != len(target.param_types):
                 return False
-            for sp, tp in zip(source.param_types, target.param_types):
+            for sp, tp in zip(source.param_types, target.param_types, strict=False):
                 if not is_assignable(sp, tp):
                     return False
             return is_assignable(source.return_type, target.return_type)

@@ -2,9 +2,63 @@
 Thirsty-Lang AST-based Code Formatter
 Pretty-prints Thirsty-Lang AST nodes with proper indentation and canonical style.
 """
-from utf.thirsty_lang.ast import *
+from utf.thirsty_lang.ast import (
+    ArmorExpr,
+    ArrayLiteral,
+    AssignStmt,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    CascadeCall,
+    ClassDecl,
+    CleanupStmt,
+    CombineExpr,
+    CondenseExpr,
+    DefendStrat,
+    DripExpr,
+    EnumDecl,
+    ErrorLiteral,
+    EvaporateExpr,
+    Expr,
+    ExprStmt,
+    FloatLiteral,
+    FloodExpr,
+    ForStmt,
+    FunctionDecl,
+    GovernedFunctionDecl,
+    GuardExpr,
+    Identifier,
+    IfStmt,
+    ImportStmt,
+    InterfaceDecl,
+    IntLiteral,
+    MemberAccess,
+    ModuleHeader,
+    MorphDef,
+    NewExpr,
+    NoneLiteral,
+    PipeExpr,
+    PipelineExpr,
+    PourStmt,
+    Program,
+    QuenchedLiteral,
+    ReturnStmt,
+    SanitizeExpr,
+    SecurityBlock,
+    ShadowThirstMutation,
+    SipStmt,
+    SpillageStmt,
+    Stmt,
+    StringLiteral,
+    StructDecl,
+    SymbolExpr,
+    ThrowStmt,
+    UnaryOp,
+    VariableDecl,
+    WhileStmt,
+)
 from utf.thirsty_lang.token import TokenType
-
 
 INDENT = "    "
 
@@ -179,7 +233,7 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
 
 def format_block(node: BlockStmt, indent: int = 0) -> str:
     """Format a block statement."""
-    prefix = INDENT * indent
+    INDENT * indent
     parts = []
     for stmt in node.statements:
         parts.append(format_stmt(stmt, indent))

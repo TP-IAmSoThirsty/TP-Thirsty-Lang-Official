@@ -3,12 +3,65 @@ Thirsty-Lang Tree-Walking Interpreter
 Evaluates Thirsty-Lang AST programs with full environment scoping,
 governance enforcement, tail-call optimization, and async support.
 """
-import sys
-import traceback
 from concurrent.futures import ThreadPoolExecutor
+
+from utf.thirsty_lang.ast import (
+    ArmorExpr,
+    ArrayLiteral,
+    AssignStmt,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    CascadeCall,
+    ClassDecl,
+    CleanupStmt,
+    CombineExpr,
+    CondenseExpr,
+    DefendStrat,
+    DripExpr,
+    EnumDecl,
+    ErrorLiteral,
+    EvaporateExpr,
+    Expr,
+    ExprStmt,
+    FloatLiteral,
+    FloodExpr,
+    ForStmt,
+    FunctionDecl,
+    GovernedFunctionDecl,
+    GuardExpr,
+    Identifier,
+    IfStmt,
+    ImportStmt,
+    InterfaceDecl,
+    IntLiteral,
+    MemberAccess,
+    MorphDef,
+    NewExpr,
+    NoneLiteral,
+    PipeExpr,
+    PipelineExpr,
+    PourStmt,
+    Program,
+    QuenchedLiteral,
+    ReturnStmt,
+    SanitizeExpr,
+    SecurityBlock,
+    ShadowThirstMutation,
+    SipStmt,
+    SpillageStmt,
+    Stmt,
+    StringLiteral,
+    StructDecl,
+    SymbolExpr,
+    ThrowStmt,
+    UnaryOp,
+    VariableDecl,
+    WhileStmt,
+)
+from utf.thirsty_lang.module_system import resolve_import
 from utf.thirsty_lang.token import TokenType
-from utf.thirsty_lang.ast import *
-from utf.thirsty_lang.module_system import resolve_import, get_builtin
 
 
 class ReturnException(Exception):
@@ -380,7 +433,7 @@ class Interpreter:
             self.env.define(alias, module, is_mut=False)
             return module
         except Exception as e:
-            raise SpillageException(str(e))
+            raise SpillageException(str(e)) from e
 
     def _execute_function_decl(self, stmt: FunctionDecl) -> object:
         def fn(*args):
@@ -421,12 +474,12 @@ class Interpreter:
             # Control flow (return) and governance denials are not errors —
             # they must propagate, never be caught by spillage handlers.
             raise
-        except SpillageException as e:
-            for error_type, handler in stmt.handlers:
+        except SpillageException:
+            for _error_type, handler in stmt.handlers:
                 return self._execute(handler)
             raise
-        except Exception as e:
-            for error_type, handler in stmt.handlers:
+        except Exception:
+            for _error_type, handler in stmt.handlers:
                 return self._execute(handler)
             raise
 

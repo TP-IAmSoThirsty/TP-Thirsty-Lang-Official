@@ -19,12 +19,20 @@ Phase 2 — PolicyParser supports:
   - Temporal versioning stubs: valid_from, valid_until, supersedes, on_expiry
   - parse_all() for multi-policy files
 """
-import re
 import datetime
+import re
 from typing import Optional
+
 from utf.tarl.spec import (
-    TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY,
-    CompositionOp, SetOp, TarlPolicyRef, TarlPolicySet,
+    DEFAULT_DENY,
+    CompositionOp,
+    SetOp,
+    TarlDecision,
+    TarlPolicy,
+    TarlPolicyRef,
+    TarlPolicySet,
+    TarlRule,
+    TarlVerdict,
 )
 
 # ── Token types ──────────────────────────────────────────────────────────────
@@ -435,7 +443,7 @@ class PolicyParser:
 
 # ── Duration parsing / temporal utilities ────────────────────────────────────
 
-def _parse_duration(s: str) -> Optional[int]:
+def _parse_duration(s: str) -> int | None:
     """
     Parse a human-readable duration string into seconds.
     Supports units: s (seconds), m (minutes), h (hours), d (days), w (weeks).
@@ -471,15 +479,15 @@ def _check_policy_temporal(policy: "TarlPolicy") -> Optional["TarlDecision"]:
     or expired/auto-expired), using policy.on_expiry or ESCALATE as the verdict.
     Returns None when the policy is in-window and should be evaluated normally.
     """
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     expiry_verdict = policy.on_expiry or TarlVerdict.ESCALATE
 
-    def _parse_dt(s: str) -> Optional[datetime.datetime]:
+    def _parse_dt(s: str) -> datetime.datetime | None:
         s = s.strip().replace("Z", "+00:00")
         try:
             dt = datetime.datetime.fromisoformat(s)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
+                dt = dt.replace(tzinfo=datetime.UTC)
             return dt
         except ValueError:
             return None
@@ -497,7 +505,7 @@ def _check_policy_temporal(policy: "TarlPolicy") -> Optional["TarlDecision"]:
             )
 
     # Build effective_until = min(valid_until, valid_from + if_unresolved_after)
-    effective_until: Optional[datetime.datetime] = None
+    effective_until: datetime.datetime | None = None
     if policy.valid_until:
         effective_until = _parse_dt(policy.valid_until)
     if policy.if_unresolved_after is not None and policy.valid_from:
@@ -991,7 +999,7 @@ def evaluate_policy(
                 expires_at = None
                 if rule.duration_seconds:
                     expires_at = (
-                        datetime.datetime.now(datetime.timezone.utc)
+                        datetime.datetime.now(datetime.UTC)
                         + datetime.timedelta(seconds=rule.duration_seconds)
                     ).isoformat(timespec="seconds")
                 return TarlDecision(

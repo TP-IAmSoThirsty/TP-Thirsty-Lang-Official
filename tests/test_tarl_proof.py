@@ -10,20 +10,21 @@ Covers:
   - Public API exports
 """
 import hashlib
-import hmac
 import json
-import sys
 import os
+import sys
 import unittest
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))  # noqa: E402
 
-from utf.tarl.spec import TarlPolicy, TarlRule, TarlVerdict, TarlProof  # noqa: E402
 from utf.tarl.core import PolicyParser  # noqa: E402
 from utf.tarl.runtime import TarlRuntime  # noqa: E402
+from utf.tarl.spec import TarlProof, TarlVerdict  # noqa: E402
 from utf.tarl.verifier import (  # noqa: E402
-    ProofVerifier, VerificationResult, _check_policy_hash, _check_trace,
+    ProofVerifier,
+    VerificationResult,
+    _check_policy_hash,
+    _check_trace,
 )
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -50,17 +51,17 @@ def _signed_runtime(policy_text: str = _POLICY_TEXT) -> TarlRuntime:
 
 
 def _make_proof(**overrides) -> TarlProof:
-    defaults = dict(
-        policy_hash="sha256:abc123",
-        context_hash="sha256:def456",
-        rule_index=0,
-        matched_condition='role == "admin"',
-        verdict=TarlVerdict.ALLOW,
-        evaluated_at="2026-06-20T12:00:00Z",
-        trace=[{"rule_index": 0, "condition": 'role == "admin"', "matched": True}],
-        signature="",
-        key_id="",
-    )
+    defaults = {
+        'policy_hash': "sha256:abc123",
+        'context_hash': "sha256:def456",
+        'rule_index': 0,
+        'matched_condition': 'role == "admin"',
+        'verdict': TarlVerdict.ALLOW,
+        'evaluated_at': "2026-06-20T12:00:00Z",
+        'trace': [{"rule_index": 0, "condition": 'role == "admin"', "matched": True}],
+        'signature': "",
+        'key_id': "",
+    }
     defaults.update(overrides)
     return TarlProof(**defaults)
 

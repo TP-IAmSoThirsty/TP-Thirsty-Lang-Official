@@ -6,18 +6,17 @@ PSIA — PreScreen Ingestion Architecture
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, Optional, List
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-
 # ─── Plane Data Models ────────────────────────────────────────────────────────
 
-class Plane(str, Enum):
+class Plane(StrEnum):
     RAW = "raw"
     VERIFIED = "verified"
     CLASSIFIED = "classified"
@@ -30,7 +29,7 @@ class Plane(str, Enum):
 class RawFrame:
     """Raw input data before any processing."""
     source: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     timestamp: float
     source_hash: str = ""
     frame_id: str = ""
@@ -51,23 +50,23 @@ class VerifiedFrame:
     """Frame after schema validation and source verification."""
     frame_id: str
     source: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     timestamp: float
     source_hash: str
     schema_version: str = "1.0"
     verified_at: float = 0.0
     verified: bool = True
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ClassifiedFrame:
     """Frame after classification."""
     frame_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     classification: str = "unknown"
     confidence: float = 0.0
-    categories: List[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
     classified_at: float = 0.0
 
 
@@ -75,10 +74,10 @@ class ClassifiedFrame:
 class SimulatedFrame:
     """Frame after shadow simulation with invariant checks."""
     frame_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     classification: str
     shadow_result: str = "pending"
-    invariant_checks: List[Dict[str, Any]] = field(default_factory=list)
+    invariant_checks: list[dict[str, Any]] = field(default_factory=list)
     all_invariants_pass: bool = False
     simulated_at: float = 0.0
 
@@ -87,18 +86,18 @@ class SimulatedFrame:
 class GovernedFrame:
     """Frame after governance evaluation."""
     frame_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     governance_verdict: str = "pending"
-    pillar_results: Dict[str, Any] = field(default_factory=dict)
+    pillar_results: dict[str, Any] = field(default_factory=dict)
     governed_at: float = 0.0
-    canary: Dict[str, Any] = field(default_factory=dict)
+    canary: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class SealedFrame:
     """Final sealed frame with Merkle tree hash and signature."""
     frame_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     merkle_root: str = ""
     signature: str = ""
     sealed_at: float = 0.0
@@ -147,7 +146,7 @@ class SealedFrame:
 class PreScreenGate:
     """Stage 1: Initial screening of raw input."""
 
-    def process(self, frame: RawFrame) -> tuple[bool, Optional[str]]:
+    def process(self, frame: RawFrame) -> tuple[bool, str | None]:
         """Screen the raw frame. Returns (passed, error_reason)."""
         if not frame.payload:
             return False, "Empty payload"
@@ -180,9 +179,9 @@ class SchemaValidator:
     def process(self, frame: VerifiedFrame) -> VerifiedFrame:
         """Validate that payload contains required fields."""
         errors = []
-        for field in self.REQUIRED_FIELDS:
-            if field not in frame.payload:
-                errors.append(f"Missing required field: {field}")
+        for required in self.REQUIRED_FIELDS:
+            if required not in frame.payload:
+                errors.append(f"Missing required field: {required}")
 
         if errors:
             frame.verified = False
@@ -330,7 +329,7 @@ class PSIAPipeline:
         self.logger = CanonicalLogger()
         self.sealer = Sealer()
 
-    def run(self, source: str, payload: Dict[str, Any]) -> SealedFrame:
+    def run(self, source: str, payload: dict[str, Any]) -> SealedFrame:
         """Run a frame through the complete 7-stage pipeline."""
         raw = RawFrame(source=source, payload=payload, timestamp=time.time())
 
@@ -353,7 +352,7 @@ class PSIAPipeline:
         simulated = self.simulator.process(classified)
 
         if not simulated.all_invariants_pass:
-            raise ValueError(f"Shadow simulation failed: some invariants did not pass")
+            raise ValueError("Shadow simulation failed: some invariants did not pass")
 
         # Stage 6: Governance
         governed = self.governor.process(simulated)
@@ -385,7 +384,7 @@ pipeline = PSIAPipeline()
 
 class PipelineRequest(BaseModel):
     source: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
 
 
 class PipelineResponse(BaseModel):
@@ -409,7 +408,7 @@ async def ingest(req: PipelineRequest):
             status="sealed",
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @app.get("/health")

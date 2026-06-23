@@ -2,14 +2,23 @@
 Tests for TSCG (Thirst's Symbolic Constitutional Grammar)
 Tests symbols, parsing, canonical form, checksum, and validation.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from utf.tscg.core import (
-    SymbolExpr, PipelineExpr, CombineExpr,
-    parse, canonical_form, checksum, validate_symbols,
-    SYMBOLS, EXTENDED_SYMBOLS, ALL_SYMBOLS, OPCODE_TO_SYMBOL
+    ALL_SYMBOLS,
+    EXTENDED_SYMBOLS,
+    OPCODE_TO_SYMBOL,
+    SYMBOLS,
+    CombineExpr,
+    PipelineExpr,
+    SymbolExpr,
+    canonical_form,
+    checksum,
+    parse,
+    validate_symbols,
 )
 
 
@@ -108,14 +117,14 @@ class TestParser:
     def test_parse_error_unknown_symbol(self):
         try:
             parse('$UNKNOWN')
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError:
             pass
 
     def test_parse_error_unexpected_char(self):
         try:
             parse('$COG @ $DNT')
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError:
             pass
 

@@ -3,22 +3,63 @@ Thirsty-Lang Recursive Descent Parser
 Produces an AST Program from a list of Tokens. Supports error recovery
 and "did you mean?" suggestions within edit distance 3.
 """
-from utf.thirsty_lang.token import Token, TokenType, KEYWORDS
 from utf.thirsty_lang.ast import (
-    Expr, Stmt,
-    Program, ModuleHeader, FunctionDecl, ClassDecl, VariableDecl,
-    BinaryOp, UnaryOp, IfStmt, WhileStmt, ForStmt, ReturnStmt,
-    PourStmt, SipStmt, ImportStmt, AssignStmt, ExprStmt, BlockStmt,
-    IntLiteral, FloatLiteral, StringLiteral, BoolLiteral, NoneLiteral,
-    ErrorLiteral, QuenchedLiteral, Identifier, PipeExpr, GuardExpr,
-    SecurityBlock, SanitizeExpr, ArmorExpr, MorphDef, DefendStrat,
-    EnumDecl, StructDecl, InterfaceDecl, GovernedFunctionDecl,
-    SpillageStmt, CleanupStmt, ThrowStmt, CascadeCall, NewExpr,
-    FloodExpr, DripExpr, EvaporateExpr, CondenseExpr, ArrayLiteral, MemberAccess,
-    SymbolExpr, PipelineExpr, CombineExpr, ShadowThirstMutation,
-CallExpr,
+    ArmorExpr,
+    ArrayLiteral,
+    AssignStmt,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    CascadeCall,
+    ClassDecl,
+    CleanupStmt,
+    CombineExpr,
+    CondenseExpr,
+    DefendStrat,
+    DripExpr,
+    EnumDecl,
+    EvaporateExpr,
+    Expr,
+    ExprStmt,
+    FloatLiteral,
+    FloodExpr,
+    ForStmt,
+    FunctionDecl,
+    GovernedFunctionDecl,
+    GuardExpr,
+    Identifier,
+    IfStmt,
+    ImportStmt,
+    InterfaceDecl,
+    IntLiteral,
+    MemberAccess,
+    ModuleHeader,
+    MorphDef,
+    NewExpr,
+    NoneLiteral,
+    PipeExpr,
+    PipelineExpr,
+    PourStmt,
+    Program,
+    QuenchedLiteral,
+    ReturnStmt,
+    SanitizeExpr,
+    SecurityBlock,
+    ShadowThirstMutation,
+    SipStmt,
+    SpillageStmt,
+    Stmt,
+    StringLiteral,
+    StructDecl,
+    SymbolExpr,
+    ThrowStmt,
+    UnaryOp,
+    VariableDecl,
+    WhileStmt,
 )
-from utf.thirsty_lang.diagnostics import make_error, Diagnostic
+from utf.thirsty_lang.diagnostics import Diagnostic, make_error
+from utf.thirsty_lang.token import KEYWORDS, Token, TokenType
 
 
 def _edit_distance(s1: str, s2: str) -> int:
@@ -142,7 +183,7 @@ class Parser:
             return None
         name_token = self._expect(TokenType.IDENTIFIER, "E901", detail="Expected module name")
         self._expect(TokenType.COLON, "E901", detail="Expected ':' after module name")
-        mode_token = self._peek()
+        self._peek()
         mode = "core"
         if self._match(TokenType.GOVERNED):
             mode = "governed"

@@ -243,7 +243,7 @@ def _cmd_verify(args):
         print(json.dumps({
             "valid": result.valid,
             "message": result.message,
-            "checks": {k: v for k, v in result.checks.items()},
+            "checks": dict(result.checks.items()),
         }, indent=2))
     else:
         print(result.summary)

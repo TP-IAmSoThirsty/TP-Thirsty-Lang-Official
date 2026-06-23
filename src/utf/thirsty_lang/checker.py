@@ -2,9 +2,83 @@
 Thirsty-Lang Type Checker / Semantic Analyzer
 Lexical scoping, type checking, governance validation, and error reporting.
 """
-from utf.thirsty_lang.ast import *
-from utf.thirsty_lang.typesys import *
-from utf.thirsty_lang.diagnostics import make_error, Diagnostic
+from utf.thirsty_lang.ast import (
+    ArmorExpr,
+    ArrayLiteral,
+    AssignStmt,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    CascadeCall,
+    ClassDecl,
+    CleanupStmt,
+    CombineExpr,
+    CondenseExpr,
+    DefendStrat,
+    DripExpr,
+    EnumDecl,
+    ErrorLiteral,
+    EvaporateExpr,
+    Expr,
+    ExprStmt,
+    FloatLiteral,
+    FloodExpr,
+    ForStmt,
+    FunctionDecl,
+    GovernedFunctionDecl,
+    GuardExpr,
+    Identifier,
+    IfStmt,
+    ImportStmt,
+    InterfaceDecl,
+    IntLiteral,
+    MemberAccess,
+    MorphDef,
+    NewExpr,
+    NoneLiteral,
+    PipeExpr,
+    PipelineExpr,
+    PourStmt,
+    Program,
+    QuenchedLiteral,
+    ReturnStmt,
+    SanitizeExpr,
+    SecurityBlock,
+    ShadowThirstMutation,
+    SipStmt,
+    SpillageStmt,
+    Stmt,
+    StringLiteral,
+    StructDecl,
+    SymbolExpr,
+    ThrowStmt,
+    TokenType,
+    UnaryOp,
+    VariableDecl,
+    WhileStmt,
+)
+from utf.thirsty_lang.diagnostics import Diagnostic, make_error
+from utf.thirsty_lang.typesys import (
+    AnyType,
+    BoolType,
+    EnumType,
+    ErrorType,
+    FloatType,
+    FunctionType,
+    InterfaceType,
+    IntType,
+    QuenchedType,
+    ReservoirType,
+    StringType,
+    StructType,
+    TaskType,
+    Type,
+    VoidType,
+    is_assignable,
+    type_from_name,
+    type_to_string,
+)
 
 
 def _edit_distance(s1: str, s2: str) -> int:
@@ -314,7 +388,7 @@ class Checker:
                 return
             if not info.get("is_mut", False):
                 self.errors.append(make_error("E020", span=stmt.span, name=name))
-        val_type = self._check_expr(stmt.value)
+        self._check_expr(stmt.value)
 
     def _check_import_stmt(self, stmt: ImportStmt):
         alias = stmt.alias or stmt.module_path
@@ -333,7 +407,7 @@ class Checker:
 
     def _check_interface_decl(self, stmt: InterfaceDecl):
         method_sigs = {}
-        for mname, params, ret_type in stmt.methods:
+        for mname, params, _ret_type in stmt.methods:
             method_sigs[mname] = [type_from_name(p[1]) if p[1] else AnyType() for p in params]
         if not self.scope.declare(stmt.name, {"type": InterfaceType(stmt.name, method_sigs), "is_mut": False, "kind": "interface"}):
             self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))

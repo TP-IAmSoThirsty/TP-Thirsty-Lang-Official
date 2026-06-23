@@ -28,7 +28,7 @@ class TokenType(Enum):
     EMPTY = auto()
     MUT = auto()
     IN = auto()
-    
+
     # --- Module Keywords ---
     IMPORT = auto()
     FROM = auto()
@@ -87,7 +87,7 @@ class TokenType(Enum):
     ENSURES = auto()
     CORE = auto()
     MODULE = auto()
-    
+
     # --- Literals ---
     INT = auto()
     FLOAT = auto()

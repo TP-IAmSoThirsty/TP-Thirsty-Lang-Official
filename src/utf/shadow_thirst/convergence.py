@@ -29,15 +29,25 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Optional
 
-from utf.thirsty_lang.token import TokenType
 from utf.thirsty_lang.ast import (
-    BlockStmt, VariableDecl, AssignStmt, ReturnStmt, PourStmt, SipStmt,
-    ImportStmt, ThrowStmt,
-    Identifier, IntLiteral, BoolLiteral, BinaryOp, UnaryOp, CallExpr,
+    AssignStmt,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    Identifier,
+    ImportStmt,
+    IntLiteral,
+    PourStmt,
+    ReturnStmt,
+    SipStmt,
+    ThrowStmt,
+    UnaryOp,
+    VariableDecl,
 )
 from utf.thirsty_lang.interpreter import Interpreter, ReturnException
+from utf.thirsty_lang.token import TokenType
 
 # ── Z3 availability (mirrors utf.tarl.analyzer) ───────────────────────────────
 
@@ -62,7 +72,7 @@ class ConvergenceVerdict:
     """
     status: str
     detail: str = ""
-    counterexample: Optional[dict] = None
+    counterexample: dict | None = None
 
 
 # ── free-variable / bound-name analysis ───────────────────────────────────────

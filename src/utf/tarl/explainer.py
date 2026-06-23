@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import List, Optional
 
-from utf.tarl.spec import TarlDecision, TarlPolicy, TarlVerdict
+from utf.tarl.spec import TarlPolicy, TarlVerdict
 
 
 @dataclass
@@ -21,7 +20,7 @@ class RuleTrace:
     verdict: TarlVerdict
     matched: bool
     evaluated: bool = True       # False if skipped — earlier rule already matched
-    error: Optional[str] = None
+    error: str | None = None
 
     def __str__(self) -> str:
         if not self.evaluated:
@@ -41,9 +40,9 @@ class PolicyExplanation:
     policy_name: str
     verdict: TarlVerdict
     matched_rule_index: int               # -1 = DEFAULT_DENY
-    rule_traces: List[RuleTrace] = field(default_factory=list)
-    temporal_reason: Optional[str] = None
-    expires_at: Optional[str] = None
+    rule_traces: list[RuleTrace] = field(default_factory=list)
+    temporal_reason: str | None = None
+    expires_at: str | None = None
 
     def format(self, verbose: bool = False) -> str:
         """
@@ -111,7 +110,7 @@ class TarlExplainer:
         self,
         context: dict,
         policy_text: str = "",
-        policy: Optional[TarlPolicy] = None,
+        policy: TarlPolicy | None = None,
     ) -> PolicyExplanation:
         """
         Evaluate a policy against context and return a full explanation.
@@ -141,7 +140,7 @@ class TarlExplainer:
                 temporal_reason=temporal.reason,
             )
 
-        traces: List[RuleTrace] = []
+        traces: list[RuleTrace] = []
         matched_index = -1
         expires_at = None
 
@@ -176,7 +175,7 @@ class TarlExplainer:
                 matched_index = i
                 if rule.duration_seconds:
                     expires_at = (
-                        datetime.datetime.now(datetime.timezone.utc)
+                        datetime.datetime.now(datetime.UTC)
                         + datetime.timedelta(seconds=rule.duration_seconds)
                     ).isoformat(timespec="seconds")
 

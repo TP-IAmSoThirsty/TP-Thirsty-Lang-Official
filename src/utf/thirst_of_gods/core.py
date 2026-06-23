@@ -9,8 +9,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from utf.thirsty_lang.ast import (
-    Program, FunctionDecl, ClassDecl, SpillageStmt, CleanupStmt,
     CascadeCall,
+    ClassDecl,
+    CleanupStmt,
+    Program,
+    SpillageStmt,
 )
 from utf.thirsty_lang.diagnostics import Diagnostic, DiagnosticSeverity
 

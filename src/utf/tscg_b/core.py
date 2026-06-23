@@ -5,8 +5,7 @@ Binary frame format with magic bytes, CRC32, SHA-256, and stream decoding.
 import hashlib
 import struct
 import zlib
-from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any
 
 from utf.tscg.core import ALL_SYMBOLS, OPCODE_TO_SYMBOL
 
@@ -31,12 +30,12 @@ def opcode_for_symbol(symbol: str) -> int:
     raise ValueError(f"Unknown symbol: {symbol}")
 
 
-def symbol_for_opcode(opcode: int) -> Optional[str]:
+def symbol_for_opcode(opcode: int) -> str | None:
     """Get symbol name for an opcode."""
     return OPCODE_TO_SYMBOL.get(opcode)
 
 
-def encode_text_to_opcodes(text: str) -> List[int]:
+def encode_text_to_opcodes(text: str) -> list[int]:
     """Encode text into reversible base-23 opcodes."""
     data = text.encode('utf-8')
     opcodes = []
@@ -49,7 +48,7 @@ def encode_text_to_opcodes(text: str) -> List[int]:
     return opcodes
 
 
-def decode_opcodes_to_text(opcodes: List[int]) -> str:
+def decode_opcodes_to_text(opcodes: list[int]) -> str:
     """Decode base-23 opcodes back to text (reversible)."""
     bytes_list = bytearray()
     i = 0
@@ -73,7 +72,7 @@ def decode_opcodes_to_text(opcodes: List[int]) -> str:
 def pack_text(text: str, flags: int = FLAG_NONE) -> bytes:
     """
     Encode text into TSCG-B binary frame.
-    
+
     Frame layout:
     - magic: b'TSGB' (4 bytes)
     - version: 1 byte
@@ -84,41 +83,41 @@ def pack_text(text: str, flags: int = FLAG_NONE) -> bytes:
     - sha256: 32 bytes
     """
     text_bytes = text.encode('utf-8')
-    
+
     # Build header
     header = struct.pack('!4sBBH', MAGIC, VERSION, flags, len(text_bytes))
-    
+
     # Payload is the raw text bytes
     payload = text_bytes
-    
+
     # CRC32 of header + payload
     crc32_val = zlib.crc32(header + payload) & 0xFFFFFFFF
     crc32_bytes = struct.pack('!I', crc32_val)
-    
+
     # SHA-256 of header + payload + crc32
     sha256_val = hashlib.sha256(header + payload + crc32_bytes).digest()
-    
+
     return header + payload + crc32_bytes + sha256_val
 
 
-def unpack_frame(data: bytes, verify: bool = True) -> Dict[str, Any]:
+def unpack_frame(data: bytes, verify: bool = True) -> dict[str, Any]:
     """
     Unpack a TSCG-B binary frame.
-    
+
     Returns dict with keys: magic, version, flags, payload_length, payload, crc32, sha256
     Raises ValueError on verification failure.
     """
     if len(data) < MIN_FRAME_SIZE:
         raise ValueError(f"Frame too short: {len(data)} bytes, minimum {MIN_FRAME_SIZE}")
-    
+
     # Parse header
     magic, version, flags, payload_length = struct.unpack('!4sBBH', data[:HEADER_SIZE])
-    
+
     if magic != MAGIC:
         raise ValueError(f"Invalid magic: {magic!r}, expected {MAGIC!r}")
     if version != VERSION:
         raise ValueError(f"Unsupported version: {version}, expected {VERSION}")
-    
+
     # Extract payload
     payload_start = HEADER_SIZE
     payload_end = payload_start + payload_length
@@ -127,19 +126,19 @@ def unpack_frame(data: bytes, verify: bool = True) -> Dict[str, Any]:
             f"Frame too short for payload: need {payload_end + CRC32_SIZE + SHA256_SIZE}, "
             f"got {len(data)}"
         )
-    
+
     payload = data[payload_start:payload_end]
-    
+
     # Extract CRC32
     crc32_start = payload_end
     crc32_end = crc32_start + CRC32_SIZE
     stored_crc32 = struct.unpack('!I', data[crc32_start:crc32_end])[0]
-    
+
     # Extract SHA-256
     sha256_start = crc32_end
     sha256_end = sha256_start + SHA256_SIZE
     stored_sha256 = data[sha256_start:sha256_end]
-    
+
     if verify:
         # Verify CRC32
         computed_crc32 = zlib.crc32(data[:HEADER_SIZE] + payload) & 0xFFFFFFFF
@@ -148,7 +147,7 @@ def unpack_frame(data: bytes, verify: bool = True) -> Dict[str, Any]:
                 f"CRC32 mismatch: computed {computed_crc32:#010x}, "
                 f"stored {stored_crc32:#010x}"
             )
-        
+
         # Verify SHA-256
         computed_sha256 = hashlib.sha256(
             data[:HEADER_SIZE] + payload + data[crc32_start:crc32_end]
@@ -158,9 +157,9 @@ def unpack_frame(data: bytes, verify: bool = True) -> Dict[str, Any]:
                 f"SHA-256 mismatch: computed {computed_sha256.hex()}, "
                 f"stored {stored_sha256.hex()}"
             )
-    
+
     text = payload.decode('utf-8', errors='replace')
-    
+
     return {
         'magic': magic,
         'version': version,
@@ -178,37 +177,37 @@ def unpack_frame(data: bytes, verify: bool = True) -> Dict[str, Any]:
 class StreamDecoder:
     """
     Buffered multi-frame TSCG-B decoder with magic-byte resynchronization.
-    
+
     Handles streams where frames may be concatenated or interrupted.
     Maintains internal buffer and yields complete frames as they arrive.
     """
-    
+
     def __init__(self):
         self.buffer = bytearray()
         self.frames_decoded = 0
-    
-    def feed(self, data: bytes) -> List[Dict[str, Any]]:
+
+    def feed(self, data: bytes) -> list[dict[str, Any]]:
         """
         Feed raw bytes into the decoder.
         Returns list of fully decoded frames found in the data.
         """
         self.buffer.extend(data)
         frames = []
-        
+
         while True:
             frame = self._try_decode()
             if frame is None:
                 break
             frames.append(frame)
             self.frames_decoded += 1
-        
+
         return frames
-    
-    def _try_decode(self) -> Optional[Dict[str, Any]]:
+
+    def _try_decode(self) -> dict[str, Any] | None:
         """Try to decode one frame from the buffer. Returns None if insufficient data."""
         if len(self.buffer) < MIN_FRAME_SIZE:
             return None
-        
+
         # Find magic bytes
         magic_idx = self.buffer.find(MAGIC)
         if magic_idx == -1:
@@ -216,15 +215,15 @@ class StreamDecoder:
             if len(self.buffer) > 65536:
                 self.buffer.clear()
             return None
-        
+
         if magic_idx > 0:
             # Discard bytes before magic (resynchronization)
             self.buffer = self.buffer[magic_idx:]
-        
+
         # Need at least header to get payload_length
         if len(self.buffer) < HEADER_SIZE:
             return None
-        
+
         try:
             _, _, _, payload_length = struct.unpack(
                 '!4sBBH', bytes(self.buffer[:HEADER_SIZE])
@@ -233,27 +232,27 @@ class StreamDecoder:
             # Corrupt header — resync by skipping first byte
             self.buffer = self.buffer[1:]
             return None
-        
+
         frame_size = HEADER_SIZE + payload_length + CRC32_SIZE + SHA256_SIZE
-        
+
         if len(self.buffer) < frame_size:
             return None
-        
+
         frame_data = bytes(self.buffer[:frame_size])
         self.buffer = self.buffer[frame_size:]
-        
+
         try:
             return unpack_frame(frame_data)
         except (ValueError, struct.error):
             # Corrupt frame — try next position
             return None
-    
-    def flush(self) -> List[Dict[str, Any]]:
+
+    def flush(self) -> list[dict[str, Any]]:
         """Flush any remaining frames. Returns empty list (incomplete frames discarded)."""
-        remaining = list(self.buffer)
+        list(self.buffer)
         self.buffer.clear()
         return []
-    
+
     @property
     def buffered_bytes(self) -> int:
         return len(self.buffer)

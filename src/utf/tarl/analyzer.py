@@ -12,10 +12,9 @@ Z3 SMT-backed analysis (optional: pip install thirsty-lang[analysis])
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
+from utf.tarl.core import PolicyParser, SafeExpr
 from utf.tarl.spec import TarlPolicy, TarlRule, TarlVerdict
-from utf.tarl.core import SafeExpr, PolicyParser, _TEMPORAL_BUILTINS
 
 # ── Z3 availability ───────────────────────────────────────────────────────────
 
@@ -52,7 +51,7 @@ _TEMPORAL_STR_BUILTINS = frozenset({"CURRENT_WEEKDAY", "CURRENT_TIMESTAMP"})
 class CoverageGap:
     """A context region where all rules fail and DEFAULT-DENY applies."""
     description: str = ""
-    example_context: Optional[dict] = None
+    example_context: dict | None = None
 
 
 @dataclass
@@ -61,7 +60,7 @@ class ShadowedRule:
     rule_index: int = 0
     condition: str = ""
     verdict: TarlVerdict = TarlVerdict.DENY
-    shadowed_by: List[int] = field(default_factory=list)
+    shadowed_by: list[int] = field(default_factory=list)
     description: str = ""
 
 
@@ -72,7 +71,7 @@ class ConflictPair:
     rule_j: int = 0
     verdict_i: TarlVerdict = TarlVerdict.DENY
     verdict_j: TarlVerdict = TarlVerdict.DENY
-    example_context: Optional[dict] = None
+    example_context: dict | None = None
     description: str = ""
 
 
@@ -83,10 +82,10 @@ class AnalysisResult:
     available: bool
     passed: bool
     message: str = ""
-    gaps: List[CoverageGap] = field(default_factory=list)
-    shadows: List[ShadowedRule] = field(default_factory=list)
-    conflicts: List[ConflictPair] = field(default_factory=list)
-    counterexample: Optional[dict] = None
+    gaps: list[CoverageGap] = field(default_factory=list)
+    shadows: list[ShadowedRule] = field(default_factory=list)
+    conflicts: list[ConflictPair] = field(default_factory=list)
+    counterexample: dict | None = None
 
     def __str__(self) -> str:
         if not self.available:
@@ -137,7 +136,7 @@ class _ConditionToZ3:
 
     # ── type inference ────────────────────────────────────────────────────────
 
-    def infer_types(self, rules: List[TarlRule]) -> None:
+    def infer_types(self, rules: list[TarlRule]) -> None:
         for rule in rules:
             try:
                 toks = PolicyParser._tokenize(rule.condition)
@@ -201,7 +200,7 @@ class _ConditionToZ3:
             self._types[key] = "opaque"
 
     @staticmethod
-    def _lit_type(node: object) -> Optional[str]:
+    def _lit_type(node: object) -> str | None:
         if not isinstance(node, tuple):
             return None
         t = node[0]
@@ -214,7 +213,7 @@ class _ConditionToZ3:
         return None
 
     @staticmethod
-    def _var_key(node: object) -> Optional[str]:
+    def _var_key(node: object) -> str | None:
         if not isinstance(node, tuple):
             return None
         t = node[0]
@@ -293,7 +292,7 @@ class _ConditionToZ3:
             return self._fresh(f"ident_{k}")
         return self._fresh(tag)
 
-    def to_val(self, node: object) -> Optional[object]:
+    def to_val(self, node: object) -> object | None:
         if not isinstance(node, tuple):
             return None
         tag = node[0]
@@ -322,8 +321,8 @@ class _ConditionToZ3:
             return self._arith(node[1], node[2], _arith_ops[tag])
         return None
 
-    def _arith(self, l: object, r: object, op: str) -> Optional[object]:
-        lv, rv = self.to_val(l), self.to_val(r)
+    def _arith(self, left: object, right: object, op: str) -> object | None:
+        lv, rv = self.to_val(left), self.to_val(right)
         if lv is None or rv is None:
             return None
         try:
@@ -381,8 +380,8 @@ class _ConditionToZ3:
                 if iz is None:
                     continue
                 try:
-                    l, r = self._coerce(vz, iz)
-                    clauses.append(l == r)
+                    lz, rz = self._coerce(vz, iz)
+                    clauses.append(lz == rz)
                 except Exception:
                     pass
             if not clauses:
@@ -394,7 +393,7 @@ class _ConditionToZ3:
 
 # ── Module helpers ────────────────────────────────────────────────────────────
 
-def _build_formulas(tr: _ConditionToZ3, rules: List[TarlRule]) -> list:
+def _build_formulas(tr: _ConditionToZ3, rules: list[TarlRule]) -> list:
     out = []
     for rule in rules:
         try:
@@ -406,7 +405,7 @@ def _build_formulas(tr: _ConditionToZ3, rules: List[TarlRule]) -> list:
     return out
 
 
-def _verdict_ite(formulas: list, rules: List[TarlRule]) -> object:
+def _verdict_ite(formulas: list, rules: list[TarlRule]) -> object:
     """First-match-wins ITE chain: DENY=0, ESCALATE=1, ALLOW=2."""
     result = _z3.IntVal(0)  # DEFAULT-DENY
     for i in range(len(formulas) - 1, -1, -1):
@@ -515,7 +514,7 @@ class PolicyAnalyzer:
                 message="No shadowing possible with fewer than 2 rules",
             )
         tr, formulas = self._translate()
-        dead: List[ShadowedRule] = []
+        dead: list[ShadowedRule] = []
         for k in range(1, len(formulas)):
             s = _z3.Solver()
             s.add(*tr.domain_constraints())
@@ -558,7 +557,7 @@ class PolicyAnalyzer:
             return _unavailable("conflicts")
         tr, formulas = self._translate()
         rules = self.policy.rules
-        found: List[ConflictPair] = []
+        found: list[ConflictPair] = []
         for i in range(len(formulas)):
             for j in range(i + 1, len(formulas)):
                 if rules[i].verdict == rules[j].verdict:

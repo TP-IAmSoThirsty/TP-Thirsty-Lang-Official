@@ -6,13 +6,14 @@ SpillageStmt-with-handlers, CleanupStmt, ClassDecl-with-init) wherever they
 occur, and is no longer fooled by functions merely *named* cascade/spillage/
 cleanup/fountain.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from utf.thirst_of_gods.core import to_gods, validate_deity_contract
 from utf.thirsty_lang.lexer import Lexer
 from utf.thirsty_lang.parser import Parser
-from utf.thirst_of_gods.core import to_gods, validate_deity_contract
 
 
 def _ast(src):

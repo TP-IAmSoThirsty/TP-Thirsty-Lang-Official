@@ -24,7 +24,7 @@ class PackageManager:
             self.manifest_path = path
         if not os.path.exists(self.manifest_path):
             return {}
-        with open(self.manifest_path, 'r') as f:
+        with open(self.manifest_path) as f:
             content = f.read()
         self.manifest = self._parse_toml(content)
         return self.manifest
@@ -33,7 +33,6 @@ class PackageManager:
         """Simple TOML parser for thirsty.toml format."""
         result = {}
         current_section = result
-        current_key = None
 
         for line in content.split("\n"):
             line = line.strip()
@@ -107,7 +106,7 @@ class PackageManager:
             self.lock_path = path
         if not os.path.exists(self.lock_path):
             return {}
-        with open(self.lock_path, 'r') as f:
+        with open(self.lock_path) as f:
             content = f.read()
         self.lock = json.loads(content) if content.strip() else {}
         return self.lock
@@ -196,7 +195,7 @@ class PackageManager:
                 for k2, v2 in value.items():
                     lines.append(f"{k2} = {json.dumps(v2) if isinstance(v2, str) else v2}")
             elif key == "dependencies" and isinstance(value, dict):
-                lines.append(f"\n[dependencies]")
+                lines.append("\n[dependencies]")
                 for dep_name, dep_ver in value.items():
                     lines.append(f"{dep_name} = {json.dumps(str(dep_ver))}")
             else:

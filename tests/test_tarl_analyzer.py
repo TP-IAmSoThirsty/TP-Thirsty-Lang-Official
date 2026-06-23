@@ -7,26 +7,26 @@ Structure:
   - _ConditionToZ3 type-inference tests (no Z3 needed)
   - Full Z3 analysis tests (skipped when z3-solver not installed)
 """
-import sys
 import os
+import sys
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))  # noqa: E402
 
-from utf.tarl.spec import TarlPolicy, TarlRule, TarlVerdict  # noqa: E402
-from utf.tarl.core import PolicyParser  # noqa: E402
 import utf.tarl.analyzer as _ana_mod  # noqa: E402
 from utf.tarl.analyzer import (  # noqa: E402
+    _Z3_AVAILABLE,
     AnalysisResult,
-    CoverageGap,
-    ShadowedRule,
     ConflictPair,
+    CoverageGap,
     PolicyAnalyzer,
+    ShadowedRule,
     _ConditionToZ3,
     _unavailable,
-    _Z3_AVAILABLE,
 )
+from utf.tarl.core import PolicyParser  # noqa: E402
+from utf.tarl.spec import TarlPolicy, TarlRule, TarlVerdict  # noqa: E402
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -681,7 +681,8 @@ class TestVerdictITEChain(unittest.TestCase):
 
     def test_first_rule_wins(self):
         import z3
-        from utf.tarl.analyzer import _build_formulas, _verdict_ite, _VERDICT_INT
+
+        from utf.tarl.analyzer import _VERDICT_INT, _build_formulas, _verdict_ite
 
         p = PolicyParser.parse(
             'policy p:\n'
@@ -703,7 +704,8 @@ class TestVerdictITEChain(unittest.TestCase):
 
     def test_default_deny_when_no_match(self):
         import z3
-        from utf.tarl.analyzer import _build_formulas, _verdict_ite, _VERDICT_INT
+
+        from utf.tarl.analyzer import _VERDICT_INT, _build_formulas, _verdict_ite
 
         p = PolicyParser.parse('policy p:\n  when x == 99 => ALLOW')
         tr = _ConditionToZ3()
@@ -723,9 +725,9 @@ class TestVerdictITEChain(unittest.TestCase):
 class TestModelExtraction(unittest.TestCase):
 
     def test_model_dict_contains_int_var(self):
-        from utf.tarl.analyzer import _model_dict
-
         import z3
+
+        from utf.tarl.analyzer import _model_dict
         tr = _ConditionToZ3()
         rules = [TarlRule(condition="age >= 18", verdict=TarlVerdict.ALLOW)]
         tr.infer_types(rules)
@@ -738,8 +740,9 @@ class TestModelExtraction(unittest.TestCase):
         self.assertEqual(d["age"], 25)
 
     def test_model_dict_contains_string_var(self):
-        from utf.tarl.analyzer import _model_dict
         import z3
+
+        from utf.tarl.analyzer import _model_dict
         tr = _ConditionToZ3()
         rules = [TarlRule(condition='role == "admin"', verdict=TarlVerdict.ALLOW)]
         tr.infer_types(rules)

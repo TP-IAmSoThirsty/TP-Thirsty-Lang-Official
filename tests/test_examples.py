@@ -3,18 +3,18 @@ Lock test: every shipped example parses, type-checks, and (where runnable)
 executes with zero diagnostics. This keeps the language's own examples from
 drifting away from the implemented grammar.
 """
+import glob
 import os
 import sys
-import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
-from utf.thirsty_lang.lexer import Lexer
-from utf.thirsty_lang.parser import Parser
 from utf.thirsty_lang.checker import check_ast
 from utf.thirsty_lang.interpreter import Interpreter
+from utf.thirsty_lang.lexer import Lexer
+from utf.thirsty_lang.parser import Parser
 
 EXAMPLES_DIR = os.path.join(
     os.path.dirname(__file__), '..', 'src', 'utf', 'examples')

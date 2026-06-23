@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from typing import List, Optional
 
 from utf.tarl.spec import TarlProof
 
@@ -36,7 +35,7 @@ class TarlAuditArchive:
 
     def __init__(self, db_path: str = "tarl_audit.db") -> None:
         self._path = db_path
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: sqlite3.Connection | None = None
         self._lock = threading.Lock()
         self._ensure_schema()
 
@@ -76,7 +75,7 @@ class TarlAuditArchive:
     def store(
         self,
         proof: TarlProof,
-        expires_at: Optional[str] = None,
+        expires_at: str | None = None,
     ) -> int:
         """
         Persist a proof in the archive.
@@ -110,12 +109,12 @@ class TarlAuditArchive:
 
     def query(
         self,
-        verdict: Optional[str] = None,
-        from_dt: Optional[str] = None,
-        to_dt: Optional[str] = None,
+        verdict: str | None = None,
+        from_dt: str | None = None,
+        to_dt: str | None = None,
         limit: int = 100,
         verifier=None,
-    ) -> List[TarlProof]:
+    ) -> list[TarlProof]:
         """
         Query stored proofs, newest first.
 
@@ -132,8 +131,8 @@ class TarlAuditArchive:
                           — callers that need tamper-evidence must pass one.
         :returns:         List of TarlProof objects.
         """
-        conditions: List[str] = []
-        params: List = []
+        conditions: list[str] = []
+        params: list = []
         if verdict:
             conditions.append("verdict = ?")
             params.append(verdict.upper())
@@ -162,13 +161,13 @@ class TarlAuditArchive:
 
     def count(
         self,
-        verdict: Optional[str] = None,
-        from_dt: Optional[str] = None,
-        to_dt: Optional[str] = None,
+        verdict: str | None = None,
+        from_dt: str | None = None,
+        to_dt: str | None = None,
     ) -> int:
         """Count proofs matching the given filters."""
-        conditions: List[str] = []
-        params: List = []
+        conditions: list[str] = []
+        params: list = []
         if verdict:
             conditions.append("verdict = ?")
             params.append(verdict.upper())
@@ -195,7 +194,7 @@ class TarlAuditArchive:
                 self._conn.close()
                 self._conn = None
 
-    def __enter__(self) -> "TarlAuditArchive":
+    def __enter__(self) -> TarlAuditArchive:
         return self
 
     def __exit__(self, *_) -> None:

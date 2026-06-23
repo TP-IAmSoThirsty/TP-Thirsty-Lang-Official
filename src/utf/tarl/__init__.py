@@ -1,34 +1,34 @@
 """T.A.R.L. — Thirsty's Active Resistance Language"""
+from utf.tarl.analyzer import (
+    AnalysisResult,
+    ConflictPair,
+    CoverageGap,
+    PolicyAnalyzer,
+    ShadowedRule,
+)
+from utf.tarl.archive import TarlAuditArchive
+from utf.tarl.composer import CompositionError, PolicyComposer
+from utf.tarl.explainer import PolicyExplanation, RuleTrace, TarlExplainer
+from utf.tarl.runtime import TarlRuntime
 from utf.tarl.spec import (
-    TarlVerdict,
+    DEFAULT_DENY,
+    CompositionOp,
+    SetOp,
     TarlDecision,
     TarlPolicy,
-    TarlRule,
     TarlPolicyRef,
     TarlPolicySet,
     TarlProof,
-    CompositionOp,
-    SetOp,
-    DEFAULT_DENY,
+    TarlRule,
+    TarlVerdict,
 )
-from utf.tarl.runtime import TarlRuntime
-from utf.tarl.composer import PolicyComposer, CompositionError
-from utf.tarl.analyzer import (
-    PolicyAnalyzer,
-    AnalysisResult,
-    CoverageGap,
-    ShadowedRule,
-    ConflictPair,
-)
-from utf.tarl.verifier import ProofVerifier, VerificationResult
-from utf.tarl.archive import TarlAuditArchive
-from utf.tarl.explainer import TarlExplainer, PolicyExplanation, RuleTrace
 from utf.tarl.tester import (
+    TarlTestCase,
+    TarlTestResult,
     TarlTestRunner,
     TarlTestSuiteResult,
-    TarlTestResult,
-    TarlTestCase,
 )
+from utf.tarl.verifier import ProofVerifier, VerificationResult
 
 __all__ = [
     "TarlVerdict",

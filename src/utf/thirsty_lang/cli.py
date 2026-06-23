@@ -7,13 +7,22 @@ import os
 import sys
 import traceback
 
+from utf.thirsty_lang import __version__
 from utf.thirsty_lang.ast import (
-    IntLiteral, FloatLiteral, StringLiteral, BoolLiteral, NoneLiteral, ErrorLiteral,
-    Identifier, CallExpr, BinaryOp, UnaryOp, ExprStmt, ReturnStmt, BlockStmt,
-    Program, FunctionDecl, VariableDecl,
+    BinaryOp,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    ExprStmt,
+    FloatLiteral,
+    Identifier,
+    IntLiteral,
+    NoneLiteral,
+    ReturnStmt,
+    StringLiteral,
+    UnaryOp,
 )
 from utf.thirsty_lang.token import TokenType
-from utf.thirsty_lang import __version__
 
 
 def main():
@@ -135,11 +144,11 @@ def main():
 
 def _lex_parse_check(file_path: str, mode: str = "core"):
     """Helper: lex, parse, and type-check a file. Returns (ast, errors, checker)."""
+    from utf.thirsty_lang.checker import check_ast
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
-    from utf.thirsty_lang.checker import check_ast
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         source = f.read()
 
     lexer = Lexer(source)
@@ -158,12 +167,12 @@ def _lex_parse_check(file_path: str, mode: str = "core"):
 
 def cmd_run(args):
     """Execute a .thirsty file."""
-    from utf.thirsty_lang.lexer import Lexer
-    from utf.thirsty_lang.parser import Parser
     from utf.thirsty_lang.checker import check_ast
-    from utf.thirsty_lang.interpreter import Interpreter, GovernanceViolation
     from utf.thirsty_lang.diagnostics import DiagnosticBundle
+    from utf.thirsty_lang.interpreter import GovernanceViolation, Interpreter
+    from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.module_system import load_lockfile
+    from utf.thirsty_lang.parser import Parser
 
     if args.demo:
         source = '''module hello: core
@@ -186,7 +195,7 @@ pour result
         if not os.path.exists(file_path):
             print(f"Error: File not found: {file_path}", file=sys.stderr)
             sys.exit(1)
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             source = f.read()
 
     lexer = Lexer(source)
@@ -230,7 +239,7 @@ pour result
             sys.exit(1)
         from utf.tarl.core import PolicyParser
         from utf.tarl.runtime import TarlRuntime
-        with open(policy_path, "r") as pf:
+        with open(policy_path) as pf:
             policy = PolicyParser.parse(pf.read())
         interpreter.attach_tarl(TarlRuntime(policy))
         # A policy with no authority tag still needs a context to evaluate.
@@ -259,10 +268,10 @@ pour result
 
 def cmd_repl(args):
     """Start an interactive REPL."""
+    from utf.thirsty_lang.checker import check_ast
+    from utf.thirsty_lang.interpreter import Environment, Interpreter
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
-    from utf.thirsty_lang.checker import check_ast
-    from utf.thirsty_lang.interpreter import Interpreter, Environment
 
     debug_enabled = args.trace or os.environ.get("THIRSTY_DEBUG") == "1"
 
@@ -356,16 +365,16 @@ def cmd_repl(args):
 
 def cmd_fmt(args):
     """Format .thirsty files."""
+    from utf.thirsty_lang.formatter import format
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
-    from utf.thirsty_lang.formatter import format
 
     for file_path in args.files:
         if not os.path.exists(file_path):
             print(f"Error: File not found: {file_path}", file=sys.stderr)
             continue
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             source = f.read()
 
         lexer = Lexer(source)
@@ -387,7 +396,10 @@ def cmd_fmt(args):
 
 def cmd_new(args):
     """Scaffold a new Thirsty-Lang project."""
-    from utf.thirsty_lang.package_manager import create_thirsty_toml, create_thirsty_lock
+    from utf.thirsty_lang.package_manager import (
+        create_thirsty_lock,
+        create_thirsty_toml,
+    )
 
     project_dir = os.path.join(os.getcwd(), args.name)
     if os.path.exists(project_dir):
@@ -419,14 +431,13 @@ pour main
 
     print(f"Created Thirsty-Lang project: {args.name}")
     print(f"  cd {project_dir}")
-    print(f"  thirsty run src/main.thirsty")
+    print("  thirsty run src/main.thirsty")
 
 
 def cmd_build(args):
     """Build a .thirsty project."""
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
-    from utf.thirsty_lang.formatter import format
 
     if not args.file:
         # Try to find main.thirsty
@@ -441,7 +452,7 @@ def cmd_build(args):
         print(f"Error: File not found: {args.file}", file=sys.stderr)
         sys.exit(1)
 
-    with open(args.file, "r") as f:
+    with open(args.file) as f:
         source = f.read()
 
     lexer = Lexer(source)
@@ -473,7 +484,6 @@ def cmd_build(args):
 
 def _transpile_to_js(ast) -> str:
     """Simple transpilation of Thirsty-Lang AST to JavaScript."""
-    from utf.thirsty_lang.formatter import format_expr, format_stmt
 
     lines = ['// Generated by Thirsty-Lang compiler', '']
 
@@ -597,11 +607,9 @@ def _emit_manifest(ast, file_path):
 
 def cmd_govern(args):
     """Governance operations."""
-    import json
 
     if not args.file:
         # Scan for .thirsty files
-        pattern = "*.thirsty"
         import glob
         files = glob.glob("**/*.thirsty", recursive=True)
         if not files:
@@ -630,11 +638,11 @@ def cmd_govern(args):
         # Evaluate policy against each function via TarlRuntime
         from utf.tarl.core import PolicyParser, evaluate_policy
         from utf.tarl.runtime import TarlRuntime
-        
+
         policy = PolicyParser.parse(tarl_policy, name="auto-tarl")
-        runtime = TarlRuntime(policy=policy)
+        TarlRuntime(policy=policy)
         verdicts = []
-        
+
         for stmt in ast.stmts:
             if hasattr(stmt, 'name') and hasattr(stmt, 'params'):
                 context = {
@@ -735,7 +743,7 @@ def cmd_doctor(args):
     # Check source dir
     if os.path.isdir("src"):
         thirsty_files = []
-        for root, dirs, files in os.walk("src"):
+        for root, _dirs, files in os.walk("src"):
             for f in files:
                 if f.endswith(".thirsty"):
                     thirsty_files.append(os.path.join(root, f))
@@ -750,19 +758,18 @@ def cmd_doctor(args):
         checks_failed += 1
 
     # Check Python environment
-    if sys.version_info >= (3, 11):
-        print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
-        checks_passed += 1
-    else:
-        print(f"✗ Python {sys.version_info.major}.{sys.version_info.minor} (3.11+ required)")
-        checks_failed += 1
+    print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    checks_passed += 1
 
     # Summary
     print()
     print(f"Passed: {checks_passed}, Failed: {checks_failed}")
 
     if args.fix and checks_failed > 0:
-        from utf.thirsty_lang.package_manager import create_thirsty_toml, create_thirsty_lock
+        from utf.thirsty_lang.package_manager import (
+            create_thirsty_lock,
+            create_thirsty_toml,
+        )
         if not os.path.exists("thirsty.toml"):
             create_thirsty_toml(".", "my-project")
             print("Created thirsty.toml")
@@ -802,7 +809,6 @@ def cmd_lsp(args):
 
 def cmd_docs(args):
     """Generate documentation."""
-    import json
 
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)

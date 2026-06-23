@@ -6,15 +6,15 @@ Restrictive meet: a ∧ b = min(a, b)   — DENY beats all
 Permissive join:  a ∨ b = max(a, b)   — ALLOW beats all
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import List, Optional, Tuple
+from enum import StrEnum
 
 # Safety ordering: DENY=0 < ESCALATE=1 < ALLOW=2
 _VERDICT_RANK: dict = {}
 
 
-class TarlVerdict(str, Enum):
+class TarlVerdict(StrEnum):
     DENY = "DENY"
     ESCALATE = "ESCALATE"
     ALLOW = "ALLOW"
@@ -43,12 +43,12 @@ class TarlVerdict(str, Enum):
         return _VERDICT_RANK[self] >= _VERDICT_RANK[other]
 
     @staticmethod
-    def meet(a: "TarlVerdict", b: "TarlVerdict") -> "TarlVerdict":
+    def meet(a: TarlVerdict, b: TarlVerdict) -> TarlVerdict:
         """Restrictive composition (∧): min in safety ordering."""
         return a if _VERDICT_RANK[a] <= _VERDICT_RANK[b] else b
 
     @staticmethod
-    def join(a: "TarlVerdict", b: "TarlVerdict") -> "TarlVerdict":
+    def join(a: TarlVerdict, b: TarlVerdict) -> TarlVerdict:
         """Permissive composition (∨): max in safety ordering."""
         return a if _VERDICT_RANK[a] >= _VERDICT_RANK[b] else b
 
@@ -61,7 +61,7 @@ _VERDICT_RANK.update({
 })
 
 
-class CompositionOp(str, Enum):
+class CompositionOp(StrEnum):
     """How a child policy composes with its parent."""
     EXTENDS = "EXTENDS"
     RESTRICTS = "RESTRICTS"
@@ -70,7 +70,7 @@ class CompositionOp(str, Enum):
         return self.value
 
 
-class SetOp(str, Enum):
+class SetOp(StrEnum):
     """How policies in a policy_set group are combined."""
     UNION = "UNION"
     INTERSECT = "INTERSECT"
@@ -84,7 +84,7 @@ class SetOp(str, Enum):
 class TarlPolicyRef:
     """A reference to another policy in a composition directive."""
     name: str
-    alias: Optional[str] = None
+    alias: str | None = None
     is_file: bool = False
 
 
@@ -94,7 +94,7 @@ class TarlRule:
     condition: str
     verdict: TarlVerdict
     source_line: int = 0
-    duration_seconds: Optional[int] = None  # time-bound verdict ("for: 4h")
+    duration_seconds: int | None = None  # time-bound verdict ("for: 4h")
 
     def __str__(self) -> str:
         s = f"when {self.condition} => {self.verdict.value}"
@@ -112,22 +112,22 @@ class TarlRule:
 @dataclass
 class TarlPolicy:
     """Ordered decision function: P = [r₁, r₂, ..., rₙ] over context space."""
-    rules: List[TarlRule] = field(default_factory=list)
+    rules: list[TarlRule] = field(default_factory=list)
     source: str = ""
     name: str = "unnamed"
     # Phase 2: composition
-    parent: Optional[str] = None
-    composition: Optional[CompositionOp] = None
-    includes: List[TarlPolicyRef] = field(default_factory=list)
+    parent: str | None = None
+    composition: CompositionOp | None = None
+    includes: list[TarlPolicyRef] = field(default_factory=list)
     has_stop: bool = False
     # Phase 5: temporal governance
-    version: Optional[str] = None
-    supersedes: Optional[str] = None
-    valid_from: Optional[str] = None      # ISO-8601; policy not effective before this
-    valid_until: Optional[str] = None     # ISO-8601; policy expires after this
-    on_expiry: Optional[TarlVerdict] = None  # verdict when outside window (default ESCALATE)
-    if_unresolved_after: Optional[int] = None  # seconds; auto-expire from valid_from
-    revert_to: Optional[str] = None            # policy name to evaluate on succession
+    version: str | None = None
+    supersedes: str | None = None
+    valid_from: str | None = None      # ISO-8601; policy not effective before this
+    valid_until: str | None = None     # ISO-8601; policy expires after this
+    on_expiry: TarlVerdict | None = None  # verdict when outside window (default ESCALATE)
+    if_unresolved_after: int | None = None  # seconds; auto-expire from valid_from
+    revert_to: str | None = None            # policy name to evaluate on succession
 
     def __str__(self) -> str:
         header = f"policy {self.name}"
@@ -172,8 +172,8 @@ class TarlDecision:
     verdict: TarlVerdict
     reason: str = ""
     rule_index: int = -1
-    matched_rule: Optional[str] = None
-    expires_at: Optional[str] = None    # ISO-8601 UTC; set for time-bound verdicts
+    matched_rule: str | None = None
+    expires_at: str | None = None    # ISO-8601 UTC; set for time-bound verdicts
 
     def __str__(self) -> str:
         s = f"[{self.verdict.value}] {self.reason}"
@@ -199,8 +199,8 @@ class TarlDecision:
                 self.expires_at.replace("Z", "+00:00")
             )
             if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=datetime.timezone.utc)
-            return datetime.datetime.now(datetime.timezone.utc) > exp
+                exp = exp.replace(tzinfo=datetime.UTC)
+            return datetime.datetime.now(datetime.UTC) > exp
         except ValueError:
             return False
 
@@ -215,7 +215,7 @@ class TarlPolicySet:
     The final verdict is the meet (∧) of all group verdicts.
     """
     name: str
-    groups: List[Tuple[SetOp, List[str]]] = field(default_factory=list)
+    groups: list[tuple[SetOp, list[str]]] = field(default_factory=list)
     default_verdict: TarlVerdict = TarlVerdict.DENY
     source: str = ""
 
@@ -246,7 +246,7 @@ class TarlProof:
     matched_condition: str    # "" for DEFAULT_DENY
     verdict: TarlVerdict
     evaluated_at: str         # ISO-8601 UTC
-    trace: List[dict]         # [{rule_index, condition, matched}, ...]
+    trace: list[dict]         # [{rule_index, condition, matched}, ...]
     signature: str            # "hmac-sha256:<hex>" or ""
     key_id: str               # signing key identifier or ""
 
@@ -284,7 +284,7 @@ class TarlProof:
         return json.dumps(self.to_dict(), indent=2)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "TarlProof":
+    def from_dict(cls, d: dict) -> TarlProof:
         return cls(
             policy_hash=d["policy_hash"],
             context_hash=d["context_hash"],
@@ -298,7 +298,7 @@ class TarlProof:
         )
 
     @classmethod
-    def from_json(cls, s: str) -> "TarlProof":
+    def from_json(cls, s: str) -> TarlProof:
         import json
         return cls.from_dict(json.loads(s))
 

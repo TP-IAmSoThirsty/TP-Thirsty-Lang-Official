@@ -10,21 +10,38 @@ because comments and incidental substrings simply aren't nodes in the tree.
 When a block cannot be parsed, each analyzer falls back to the original lexical
 heuristic so partial/garbled input still produces a verdict.
 """
-import re
-import hashlib
 import dataclasses
+import hashlib
+import re
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
 
+from utf.thirsty_lang.ast import (
+    ArrayLiteral,
+    AssignStmt,
+    BlockStmt,
+    BoolLiteral,
+    CallExpr,
+    Expr,
+    FloatLiteral,
+    FloodExpr,
+    ForStmt,
+    Identifier,
+    ImportStmt,
+    IntLiteral,
+    NewExpr,
+    NoneLiteral,
+    PourStmt,
+    Program,
+    ReturnStmt,
+    ShadowThirstMutation,
+    SipStmt,
+    Stmt,
+    StringLiteral,
+    VariableDecl,
+    WhileStmt,
+)
 from utf.thirsty_lang.lexer import Lexer
 from utf.thirsty_lang.parser import Parser
-from utf.thirsty_lang.ast import (
-    Expr, Stmt, BlockStmt, Program, ShadowThirstMutation,
-    VariableDecl, AssignStmt, CallExpr, Identifier, ReturnStmt,
-    ForStmt, WhileStmt, NewExpr, FloodExpr, ArrayLiteral,
-    PourStmt, SipStmt, ImportStmt,
-    IntLiteral, FloatLiteral, StringLiteral, BoolLiteral, NoneLiteral,
-)
 
 
 class AnalysisLevel:
@@ -150,9 +167,9 @@ class ShadowModule:
     invariant_code: str = ""
     canonical_code: str = ""
     source: str = ""
-    shadow_ast: Optional[Stmt] = None
-    invariant_ast: Optional[Stmt] = None
-    canonical_ast: Optional[Stmt] = None
+    shadow_ast: Stmt | None = None
+    invariant_ast: Stmt | None = None
+    canonical_ast: Stmt | None = None
 
     def __post_init__(self):
         # Parse any block whose AST was not supplied directly. Failures leave
@@ -628,7 +645,7 @@ class CanonicalConvergenceAnalyzer:
             message="Shadow and canonical AST shapes differ — possible divergence",
         )
 
-    def _semantic(self, s_ast, c_ast) -> Optional[AnalysisResult]:
+    def _semantic(self, s_ast, c_ast) -> AnalysisResult | None:
         """Run the Z3 then execute-and-compare layers; None if both abstain."""
         from utf.shadow_thirst import convergence as conv
 
@@ -651,8 +668,8 @@ class CanonicalConvergenceAnalyzer:
         return None
 
     def _lexical(self, module: ShadowModule) -> AnalysisResult:
-        shadow_lines = [l.strip() for l in module.shadow_code.split('\n') if l.strip()]
-        canonical_lines = [l.strip() for l in module.canonical_code.split('\n') if l.strip()]
+        shadow_lines = [ln.strip() for ln in module.shadow_code.split('\n') if ln.strip()]
+        canonical_lines = [ln.strip() for ln in module.canonical_code.split('\n') if ln.strip()]
         if len(shadow_lines) == 0 or len(canonical_lines) == 0:
             return AnalysisResult(
                 analyzer="CanonicalConvergence", passed=False,
@@ -696,7 +713,7 @@ class PromotionEngine:
             ("CanonicalConvergence", CanonicalConvergenceAnalyzer()),
         ]
 
-    def evaluate(self, module: ShadowModule) -> Tuple[str, List[AnalysisResult]]:
+    def evaluate(self, module: ShadowModule) -> tuple[str, list[AnalysisResult]]:
         """
         Evaluate a mutation module. Returns (verdict, results).
         Verdict is one of: PROMOTE, REJECT, FLAGGED
@@ -729,7 +746,7 @@ class PromotionEngine:
         return verdict, results
 
     @staticmethod
-    def generate_mermaid(module: ShadowModule, verdict: str = "PROMOTE", results: List[AnalysisResult] = None) -> str:
+    def generate_mermaid(module: ShadowModule, verdict: str = "PROMOTE", results: list[AnalysisResult] = None) -> str:
         if results is None:
             results = []
         """Generate a Mermaid flowchart visualization of the promotion flow."""
@@ -757,11 +774,11 @@ class PromotionEngine:
         lines.append(f"    A{min(5, len(results) - 1)} --> V")
 
         if verdict == "PROMOTE":
-            lines.append(f"    V --> P[\"🚀 PROMOTE\"]")
+            lines.append("    V --> P[\"🚀 PROMOTE\"]")
         elif verdict == "REJECT":
-            lines.append(f"    V --> R[\"❌ REJECT\"]")
+            lines.append("    V --> R[\"❌ REJECT\"]")
         else:
-            lines.append(f"    V --> F[\"⚠️ FLAGGED\"]")
+            lines.append("    V --> F[\"⚠️ FLAGGED\"]")
 
         lines.append("```")
         return "\n".join(lines)

@@ -22,16 +22,15 @@ import json
 import logging
 import sys
 import threading
-from typing import Dict, List, Optional
 
 log = logging.getLogger(__name__)
 
 
 # ── JSON-RPC framing ──────────────────────────────────────────────────────────
 
-def _read_message(stream) -> Optional[dict]:
+def _read_message(stream) -> dict | None:
     """Read one Length-prefixed JSON-RPC message. Returns None on EOF."""
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     while True:
         line = stream.readline()
         if not line:
@@ -53,7 +52,7 @@ def _read_message(stream) -> Optional[dict]:
 def _write_message(stream, msg: dict) -> None:
     """Write one Length-prefixed JSON-RPC message to stream."""
     body = json.dumps(msg, separators=(",", ":")).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("utf-8")
+    header = f"Content-Length: {len(body)}\r\n\r\n".encode()
     stream.write(header + body)
     stream.flush()
 
@@ -94,12 +93,12 @@ class TarlLanguageServer:
     def __init__(self, stdin=None, stdout=None):
         self._in = stdin or sys.stdin.buffer
         self._out = stdout or sys.stdout.buffer
-        self._docs: Dict[str, str] = {}
+        self._docs: dict[str, str] = {}
         self._running = True
         # Protects stdout writes from main + Z3 background threads
         self._write_lock = threading.Lock()
         # Version counter per URI — lets Z3 threads discard stale results
-        self._doc_versions: Dict[str, int] = {}
+        self._doc_versions: dict[str, int] = {}
 
     def run(self) -> None:
         """Main read-dispatch loop."""
@@ -237,7 +236,7 @@ class TarlLanguageServer:
 
         threading.Thread(target=_z3_task, daemon=True).start()
 
-    def validate(self, text: str) -> List[dict]:
+    def validate(self, text: str) -> list[dict]:
         """
         Synchronous combined validation — syntax + Z3 (if available).
 
@@ -247,12 +246,12 @@ class TarlLanguageServer:
         """
         return self._syntax_diags(text) + self._z3_diags(text)
 
-    def _syntax_diags(self, text: str) -> List[dict]:
+    def _syntax_diags(self, text: str) -> list[dict]:
         """Fast synchronous pass: tokenizer/parser errors only."""
         from utf.tarl.core import PolicyParser
         from utf.tarl.spec import TarlPolicy
 
-        diags: List[dict] = []
+        diags: list[dict] = []
         doc_lines = text.split("\n")
 
         try:
@@ -279,12 +278,12 @@ class TarlLanguageServer:
 
         return diags
 
-    def _z3_diags(self, text: str) -> List[dict]:
+    def _z3_diags(self, text: str) -> list[dict]:
         """Slow optional pass: Z3-backed dead-rule and coverage analysis."""
         from utf.tarl.core import PolicyParser
         from utf.tarl.spec import TarlPolicy
 
-        diags: List[dict] = []
+        diags: list[dict] = []
         doc_lines = text.split("\n")
 
         try:
@@ -329,7 +328,7 @@ class TarlLanguageServer:
 
     # ── Hover ─────────────────────────────────────────────────────────────────
 
-    def _on_hover(self, params: dict) -> Optional[dict]:
+    def _on_hover(self, params: dict) -> dict | None:
         uri = params.get("textDocument", {}).get("uri", "")
         pos = params.get("position", {})
         line = pos.get("line", 0)
@@ -343,7 +342,7 @@ class TarlLanguageServer:
             return None
         return {"contents": {"kind": "markdown", "value": contents}}
 
-    def hover_at(self, text: str, line: int) -> Optional[str]:
+    def hover_at(self, text: str, line: int) -> str | None:
         """
         Return markdown hover string for the given (0-based) line, or None.
 
@@ -406,7 +405,7 @@ class TarlLanguageServer:
 
     # ── Definition ────────────────────────────────────────────────────────────
 
-    def _on_definition(self, params: dict) -> Optional[dict]:
+    def _on_definition(self, params: dict) -> dict | None:
         uri = params.get("textDocument", {}).get("uri", "")
         pos = params.get("position", {})
         line_idx = pos.get("line", 0)
@@ -419,7 +418,7 @@ class TarlLanguageServer:
 
     def definition_at(
         self, text: str, uri: str, line_idx: int
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Return an LSP Location dict for the definition at line_idx, or None.
 
@@ -454,7 +453,7 @@ class TarlLanguageServer:
         m_inc = PolicyParser.INCLUDE_RE.match(raw_line.strip())
         if m_inc and m_inc.group(1):
             import os
-            from urllib.parse import urlparse, quote
+            from urllib.parse import quote, urlparse
             parsed = urlparse(uri)
             base_dir = os.path.dirname(parsed.path)
             target = os.path.normpath(

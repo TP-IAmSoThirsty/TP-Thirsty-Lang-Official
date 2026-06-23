@@ -2,15 +2,21 @@
 Tests for Shadow Thirst (Tier 4)
 Tests mutation parsing, 6 analyzers, promote/reject flow, and Mermaid visualization.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from utf.shadow_thirst.core import (
-    MutationParser, ShadowModule, 
-    PlaneIsolationAnalyzer, DeterminismAnalyzer, ResourceEstimator,
-    PuritySpringAnalyzer, MemoryEvaporationAnalyzer, CanonicalConvergenceAnalyzer,
-    PromotionEngine
+    CanonicalConvergenceAnalyzer,
+    DeterminismAnalyzer,
+    MemoryEvaporationAnalyzer,
+    MutationParser,
+    PlaneIsolationAnalyzer,
+    PromotionEngine,
+    PuritySpringAnalyzer,
+    ResourceEstimator,
+    ShadowModule,
 )
 
 
@@ -284,7 +290,7 @@ class TestPromotionEngine:
     def test_reject_on_critical(self):
         engine = PromotionEngine()
         module = ShadowModule(
-            name="test_reject", 
+            name="test_reject",
             shadow_code="",
             invariant_code="",
             canonical_code=""
@@ -331,14 +337,14 @@ mutation safe_transform {
 """
         module = parser.parse(text)
         assert module is not None
-        
+
         engine = PromotionEngine()
         verdict, results = engine.evaluate(module)
-        
+
         # Should have results from all 6 analyzers
         assert len(results) == 6
         assert verdict is not None
-        
+
         # Check all analyzer names are present
         analyzer_names = [r.name for r in results]
         assert "PlaneIsolation" in analyzer_names

@@ -36,9 +36,8 @@ import glob as _glob
 import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
 
-from utf.tarl.core import evaluate_policy, PolicyParser
+from utf.tarl.core import PolicyParser, evaluate_policy
 from utf.tarl.spec import TarlVerdict
 
 
@@ -48,16 +47,16 @@ class TarlTestCase:
     name: str
     context: dict
     expect: TarlVerdict
-    expect_rule: Optional[int] = None
+    expect_rule: int | None = None
     source_line: int = 0
 
 
 @dataclass
 class TarlTestFile:
     """Parsed representation of a complete .tarl_test file."""
-    policy_file: Optional[str] = None
-    policy_text: Optional[str] = None
-    tests: List[TarlTestCase] = field(default_factory=list)
+    policy_file: str | None = None
+    policy_text: str | None = None
+    tests: list[TarlTestCase] = field(default_factory=list)
 
 
 @dataclass
@@ -67,9 +66,9 @@ class TarlTestResult:
     passed: bool
     expected: TarlVerdict
     actual: TarlVerdict
-    expected_rule: Optional[int] = None
+    expected_rule: int | None = None
     actual_rule: int = -1
-    error: Optional[str] = None
+    error: str | None = None
 
     def __str__(self) -> str:
         status = "PASS" if self.passed else "FAIL"
@@ -93,8 +92,8 @@ class TarlTestSuiteResult:
     total: int
     passed: int
     failed: int
-    results: List[TarlTestResult]
-    load_error: Optional[str] = None
+    results: list[TarlTestResult]
+    load_error: str | None = None
 
     def __str__(self) -> str:
         if self.load_error:
@@ -140,7 +139,7 @@ class TarlTestRunner:
             )
         return self._run_text(text, base_dir=base_dir, file_path=path)
 
-    def run_directory(self, path: str) -> List[TarlTestSuiteResult]:
+    def run_directory(self, path: str) -> list[TarlTestSuiteResult]:
         """
         Recursively find and run all .tarl_test files under path.
         Returns results in sorted order by file path.
@@ -174,7 +173,7 @@ class TarlTestRunner:
                 results=[], load_error=str(exc),
             )
 
-        policy_text: Optional[str] = suite.policy_text
+        policy_text: str | None = suite.policy_text
         if policy_text is None and suite.policy_file:
             ppath = (
                 suite.policy_file if os.path.isabs(suite.policy_file)
@@ -198,7 +197,7 @@ class TarlTestRunner:
             )
 
         policy = PolicyParser.parse(policy_text)
-        results: List[TarlTestResult] = []
+        results: list[TarlTestResult] = []
         for tc in suite.tests:
             results.append(self._run_case(tc, policy))
 
@@ -249,7 +248,7 @@ class TarlTestRunner:
         lines = text.split("\n")
         n = len(lines)
         i = 0
-        current_test: Optional[dict] = None
+        current_test: dict | None = None
         inline_mode = False   # True when collecting indented policy lines
 
         def _flush() -> None:
@@ -266,11 +265,11 @@ class TarlTestRunner:
             raw_expect = current_test.get("expect", "")
             try:
                 expect = TarlVerdict(raw_expect.upper())
-            except ValueError:
+            except ValueError as exc:
                 raise ValueError(
                     f"Invalid expect verdict {raw_expect!r} in test {name!r}."
                     f" Must be ALLOW, DENY, or ESCALATE."
-                )
+                ) from exc
             raw_rule = current_test.get("expect_rule")
             expect_rule = int(raw_rule) if raw_rule is not None else None
             suite.tests.append(TarlTestCase(
@@ -281,7 +280,7 @@ class TarlTestRunner:
                 source_line=current_test.get("line", 0),
             ))
 
-        inline_policy_lines: List[str] = []
+        inline_policy_lines: list[str] = []
 
         while i < n:
             raw = lines[i]

@@ -2,10 +2,10 @@
 TSCG-B CLI — Command-line interface for TSCG Binary Protocol
 encode/decode commands.
 """
-import sys
 import json
+import sys
 
-from utf.tscg_b.core import pack_text, unpack_frame, StreamDecoder
+from utf.tscg_b.core import StreamDecoder, pack_text, unpack_frame
 
 
 def cmd_encode(args: list):

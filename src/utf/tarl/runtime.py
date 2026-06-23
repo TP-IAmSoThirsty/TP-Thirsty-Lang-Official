@@ -12,12 +12,16 @@ import hmac
 import json
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple
 
+from utf.tarl.core import PolicyParser, SafeExpr, _check_policy_temporal
 from utf.tarl.spec import (
-    TarlVerdict, TarlDecision, TarlPolicy, TarlRule, TarlProof, DEFAULT_DENY,
+    DEFAULT_DENY,
+    TarlDecision,
+    TarlPolicy,
+    TarlProof,
+    TarlRule,
+    TarlVerdict,
 )
-from utf.tarl.core import SafeExpr, PolicyParser, _check_policy_temporal
 
 
 def _is_temporally_constrained(policy: TarlPolicy) -> bool:
@@ -34,7 +38,7 @@ class LRUCache:
         self.maxsize = maxsize
         self._cache = OrderedDict()
 
-    def get(self, key: str) -> Optional[TarlDecision]:
+    def get(self, key: str) -> TarlDecision | None:
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
@@ -68,7 +72,7 @@ class TarlRuntime:
 
     def __init__(
         self,
-        policy: Optional[TarlPolicy] = None,
+        policy: TarlPolicy | None = None,
         max_workers: int = 4,
     ):
         self.policy = policy or TarlPolicy()
@@ -161,9 +165,7 @@ class TarlRuntime:
         """Replace the active policy and reset the cache and hit counts."""
         self.policy = new_policy
         self.cache.clear()
-        self._hit_counts = {
-            i: 0 for i in range(len(new_policy.rules))
-        }
+        self._hit_counts = dict.fromkeys(range(len(new_policy.rules)), 0)
         self._throw_counts = {}
 
     # ── Evaluation ────────────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ class TarlRuntime:
     def evaluate(
         self,
         context: dict,
-        policy_text: Optional[str] = None,
+        policy_text: str | None = None,
     ) -> TarlDecision:
         """
         Evaluate the active policy (or policy_text if supplied) against
@@ -249,7 +251,7 @@ class TarlRuntime:
                 expires_at = None
                 if rule.duration_seconds:
                     expires_at = (
-                        datetime.datetime.now(datetime.timezone.utc)
+                        datetime.datetime.now(datetime.UTC)
                         + datetime.timedelta(seconds=rule.duration_seconds)
                     ).isoformat(timespec="seconds")
                 result = TarlDecision(
@@ -301,8 +303,8 @@ class TarlRuntime:
     def evaluate_with_proof(
         self,
         context: dict,
-        policy_text: Optional[str] = None,
-    ) -> Tuple[TarlDecision, TarlProof]:
+        policy_text: str | None = None,
+    ) -> tuple[TarlDecision, TarlProof]:
         """
         Evaluate sequentially, recording a full evaluation trace, then sign.
 
@@ -346,7 +348,7 @@ class TarlRuntime:
                 expires_at = None
                 if rule.duration_seconds:
                     expires_at = (
-                        datetime.datetime.now(datetime.timezone.utc)
+                        datetime.datetime.now(datetime.UTC)
                         + datetime.timedelta(seconds=rule.duration_seconds)
                     ).isoformat(timespec="seconds")
                 decision = TarlDecision(

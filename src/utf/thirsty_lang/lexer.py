@@ -2,8 +2,8 @@
 Thirsty-Lang Lexer
 Character-by-character tokenizer with source span tracking and error handling.
 """
-from utf.thirsty_lang.token import Token, TokenType, KEYWORDS
 from utf.thirsty_lang.diagnostics import Diagnostic
+from utf.thirsty_lang.token import KEYWORDS, Token, TokenType
 
 
 class Lexer:
@@ -133,7 +133,7 @@ class Lexer:
         if self._match("="):
             self._add_token(TokenType.NE, "!=")
         else:
-            self._error("E001", f"Unrecognized character: '!' (use 'not' for negation)")
+            self._error("E001", "Unrecognized character: '!' (use 'not' for negation)")
 
     def _handle_less(self):
         if self._match("="):

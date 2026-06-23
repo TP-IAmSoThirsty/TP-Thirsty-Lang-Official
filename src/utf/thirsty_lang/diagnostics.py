@@ -3,7 +3,6 @@ Thirsty-Lang Error Diagnostics
 Error code registry, diagnostic formatting, and bundle reporting.
 """
 from dataclasses import dataclass, field
-from typing import Optional
 from enum import Enum
 
 
@@ -111,7 +110,7 @@ class Diagnostic:
     span: tuple  # (line_start, col_start, line_end, col_end)
     severity: str = "error"  # "error", "warning", "info"
 
-    def format(self, source_lines: Optional[list[str]] = None) -> str:
+    def format(self, source_lines: list[str] | None = None) -> str:
         result = f"[{self.code}] {self.severity}: {self.message}"
         if source_lines and len(source_lines) > 0:
             line, col = self.span[0], self.span[1]
@@ -126,7 +125,7 @@ class Diagnostic:
 @dataclass
 class DiagnosticBundle:
     diagnostics: list[Diagnostic] = field(default_factory=list)
-    source_lines: Optional[list[str]] = None
+    source_lines: list[str] | None = None
 
     def add(self, diagnostic: Diagnostic):
         self.diagnostics.append(diagnostic)
@@ -149,7 +148,7 @@ class DiagnosticBundle:
         return len(self.diagnostics) > 0
 
 
-def format_diagnostic(error: Diagnostic, source_lines: Optional[list[str]] = None) -> str:
+def format_diagnostic(error: Diagnostic, source_lines: list[str] | None = None) -> str:
     """Convenience function to format a single diagnostic with source context."""
     return error.format(source_lines)
 

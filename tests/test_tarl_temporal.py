@@ -7,19 +7,23 @@ Covers:
   5c  Policy succession (if_unresolved_after / revert_to)
   5d  Temporal audit archive (TarlAuditArchive)
 """
-import time
 import unittest
 
-from utf.tarl.spec import (
-    TarlVerdict, TarlDecision, TarlPolicy, TarlRule,
-)
+from utf.tarl.archive import TarlAuditArchive
+from utf.tarl.composer import PolicyComposer
 from utf.tarl.core import (
-    PolicyParser, evaluate_policy, _parse_duration, _check_policy_temporal,
+    PolicyParser,
+    _check_policy_temporal,
+    _parse_duration,
+    evaluate_policy,
 )
 from utf.tarl.runtime import TarlRuntime
-from utf.tarl.composer import PolicyComposer
-from utf.tarl.archive import TarlAuditArchive
-
+from utf.tarl.spec import (
+    TarlDecision,
+    TarlPolicy,
+    TarlRule,
+    TarlVerdict,
+)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -766,7 +770,6 @@ class TestArchiveQueryVerifier(unittest.TestCase):
         return proof
 
     def test_query_without_verifier_returns_all(self):
-        from utf.tarl.verifier import ProofVerifier
         signed = self._make_signed_proof()
         unsigned = self._make_unsigned_proof()
         with TarlAuditArchive(":memory:") as arc:

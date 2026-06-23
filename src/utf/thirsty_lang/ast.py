@@ -4,9 +4,9 @@ All Abstract Syntax Tree node types for the Thirsty-Lang language family.
 Every node carries a span tuple (line_start, col_start, line_end, col_end).
 """
 from dataclasses import dataclass, field
-from typing import Any, Optional
-from utf.thirsty_lang.token import TokenType
+from typing import Any
 
+from utf.thirsty_lang.token import TokenType
 
 # === Expressions ===
 
@@ -50,7 +50,7 @@ class ErrorLiteral(Expr):
 class QuenchedLiteral(Expr):
     """A quenched (optional) value with a type parameter."""
     type_param: str  # type name like "Int", "String"
-    value: Optional[Any] = None
+    value: Any | None = None
 
 
 @dataclass
@@ -193,8 +193,8 @@ class BlockStmt(Stmt):
 class VariableDecl(Stmt):
     """drink name: type = expr  OR  drink mut name = expr"""
     name: str
-    var_type: Optional[str]  # type annotation string, or None
-    init_expr: Optional[Expr]
+    var_type: str | None  # type annotation string, or None
+    init_expr: Expr | None
     is_mut: bool = False
 
 
@@ -208,7 +208,7 @@ class AssignStmt(Stmt):
 class IfStmt(Stmt):
     condition: Expr
     then_block: Stmt  # BlockStmt
-    else_block: Optional[Stmt] = None
+    else_block: Stmt | None = None
 
 
 @dataclass
@@ -226,7 +226,7 @@ class ForStmt(Stmt):
 
 @dataclass
 class ReturnStmt(Stmt):
-    value: Optional[Expr] = None
+    value: Expr | None = None
 
 
 @dataclass
@@ -244,7 +244,7 @@ class SipStmt(Stmt):
 @dataclass
 class ImportStmt(Stmt):
     module_path: str
-    alias: Optional[str] = None
+    alias: str | None = None
 
 
 @dataclass
@@ -298,7 +298,7 @@ class FunctionDecl(Stmt):
     """glass name(params) -> return_type { body }"""
     name: str
     params: list  # list of (name, type_str)
-    return_type: Optional[str]  # optional return type annotation
+    return_type: str | None  # optional return type annotation
     body: Stmt
 
 
@@ -339,16 +339,16 @@ class GovernedFunctionDecl(Stmt):
     """
     name: str
     params: list
-    return_type: Optional[str]
+    return_type: str | None
     body: Stmt
-    requires_annotation: Optional[str] = None
-    requires_expr: Optional[Expr] = None
+    requires_annotation: str | None = None
+    requires_expr: Expr | None = None
     # Postcondition: checked after the body with ``result`` bound to the return.
-    ensures_annotation: Optional[str] = None
-    ensures_expr: Optional[Expr] = None
+    ensures_annotation: str | None = None
+    ensures_expr: Expr | None = None
     # Invariant: a predicate enforced at both call entry and exit.
-    invariant_annotation: Optional[str] = None
-    invariant_expr: Optional[Expr] = None
+    invariant_annotation: str | None = None
+    invariant_expr: Expr | None = None
 
 
 # === Module & Program ===
@@ -363,7 +363,7 @@ class ModuleHeader:
 @dataclass
 class Program:
     stmts: list
-    header: Optional[ModuleHeader] = None
+    header: ModuleHeader | None = None
     span: tuple = (0, 0, 0, 0)
 
 
@@ -373,9 +373,9 @@ class Program:
 class ShadowThirstMutation(Stmt):
     """mutation name { validated_canonical { shadow { ... } invariant { ... } canonical { ... } } }"""
     name: str
-    shadow_block: Optional[Stmt] = None
-    invariant_block: Optional[Stmt] = None
-    canonical_block: Optional[Stmt] = None
+    shadow_block: Stmt | None = None
+    invariant_block: Stmt | None = None
+    canonical_block: Stmt | None = None
 
 
 # Type alias for any AST node

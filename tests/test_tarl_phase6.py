@@ -11,7 +11,6 @@ Covers:
 import io
 import json
 import os
-import sys
 import tempfile
 import unittest
 
@@ -623,7 +622,7 @@ class TestTarlLanguageServer(unittest.TestCase):
         self.assertEqual(recovered["method"], "initialize")
 
     def test_dispatch_unknown_method_with_id_replies_null(self):
-        from utf.tarl.lsp import _write_message, _read_message
+        from utf.tarl.lsp import _read_message
 
         req = json.dumps({
             "jsonrpc": "2.0", "id": 99, "method": "$/unknown", "params": {}
@@ -635,7 +634,7 @@ class TestTarlLanguageServer(unittest.TestCase):
         from utf.tarl.lsp import TarlLanguageServer
         srv = TarlLanguageServer(stdin=stdin, stdout=stdout)
         # Read one message and dispatch
-        msg = _read_message(stdin)
+        _read_message(stdin)
         stdin.seek(0)  # reset for run() to consume
         srv._dispatch({"jsonrpc": "2.0", "id": 99, "method": "$/unknown",
                         "params": {}})
@@ -802,13 +801,12 @@ class TestPhase6APIExports(unittest.TestCase):
                 self.assertTrue(hasattr(tarl, name))
 
     def test_explainer_importable_directly(self):
-        from utf.tarl.explainer import TarlExplainer, PolicyExplanation, RuleTrace
+        from utf.tarl.explainer import TarlExplainer
         self.assertTrue(callable(TarlExplainer))
 
     def test_tester_importable_directly(self):
         from utf.tarl.tester import (
-            TarlTestRunner, TarlTestSuiteResult,
-            TarlTestResult, TarlTestCase,
+            TarlTestRunner,
         )
         self.assertTrue(callable(TarlTestRunner))
 

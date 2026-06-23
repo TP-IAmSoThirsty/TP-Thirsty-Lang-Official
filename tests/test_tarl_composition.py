@@ -24,30 +24,29 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "src")
 )
 
-from utf.tarl.spec import (  # noqa: E402
-    TarlVerdict,
-    TarlPolicy,
-    TarlRule,
-    TarlPolicyRef,
-    TarlPolicySet,
-    CompositionOp,
-    SetOp,
-    DEFAULT_DENY,
+from utf.tarl.composer import (  # noqa: E402
+    CompositionError,
+    PolicyComposer,
 )
 from utf.tarl.core import PolicyParser, evaluate_policy  # noqa: E402
-from utf.tarl.composer import (  # noqa: E402
-    PolicyComposer,
-    CompositionError,
-)
 from utf.tarl.runtime import TarlRuntime  # noqa: E402
-
+from utf.tarl.spec import (  # noqa: E402
+    DEFAULT_DENY,
+    CompositionOp,
+    SetOp,
+    TarlPolicy,
+    TarlPolicyRef,
+    TarlPolicySet,
+    TarlRule,
+    TarlVerdict,
+)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _policy(name, rules):
     """Build a TarlPolicy from a list of (condition, verdict) tuples."""
-    text = "policy {}:\n".format(name) + "\n".join(
-        "  when {} => {}".format(c, v) for c, v in rules
+    text = f"policy {name}:\n" + "\n".join(
+        f"  when {c} => {v}" for c, v in rules
     )
     return PolicyParser.parse(text)
 

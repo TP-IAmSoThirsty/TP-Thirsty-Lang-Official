@@ -6,16 +6,17 @@ Covers the layered, default-deny policy wired into the interpreter:
   2. Cross-mode guard (governed function denied when not in governed mode)
   3. Optional TARL policy routing (ALLOW permits, non-ALLOW denies + proof)
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
+from utf.thirsty_lang.ast import GovernedFunctionDecl
+from utf.thirsty_lang.interpreter import GovernanceViolation, Interpreter
 from utf.thirsty_lang.lexer import Lexer
 from utf.thirsty_lang.parser import Parser
-from utf.thirsty_lang.ast import GovernedFunctionDecl
-from utf.thirsty_lang.interpreter import Interpreter, GovernanceViolation
 
 
 def _load(src, mode=None):

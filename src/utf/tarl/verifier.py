@@ -13,16 +13,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
-from utf.tarl.spec import TarlProof, TarlVerdict
+from utf.tarl.spec import TarlProof
 
 
 @dataclass
 class VerificationResult:
     """Result of verifying a TarlProof."""
     valid: bool
-    checks: Dict[str, Optional[bool]] = field(default_factory=dict)
+    checks: dict[str, bool | None] = field(default_factory=dict)
     message: str = ""
 
     def __str__(self) -> str:
@@ -56,9 +55,9 @@ class ProofVerifier:
     """
 
     def __init__(self) -> None:
-        self._hmac_keys: Dict[str, bytes] = {}
+        self._hmac_keys: dict[str, bytes] = {}
 
-    def add_hmac_key(self, key_id: str, secret: bytes) -> "ProofVerifier":
+    def add_hmac_key(self, key_id: str, secret: bytes) -> ProofVerifier:
         """Register an HMAC-SHA256 key for signature verification."""
         self._hmac_keys[key_id] = secret
         return self
@@ -66,7 +65,7 @@ class ProofVerifier:
     def verify(
         self,
         proof: TarlProof,
-        policy_source: Optional[str] = None,
+        policy_source: str | None = None,
     ) -> VerificationResult:
         """
         Verify a TarlProof.
@@ -81,8 +80,8 @@ class ProofVerifier:
           - policy_hash is True or None (not provided)
           - trace is True
         """
-        checks: Dict[str, Optional[bool]] = {}
-        messages: List[str] = []
+        checks: dict[str, bool | None] = {}
+        messages: list[str] = []
 
         # ── 1. Signature ──────────────────────────────────────────────────────
         sig_result = self._check_signature(proof)
@@ -123,7 +122,7 @@ class ProofVerifier:
             message="; ".join(messages),
         )
 
-    def _check_signature(self, proof: TarlProof) -> Optional[bool]:
+    def _check_signature(self, proof: TarlProof) -> bool | None:
         """
         Returns True if the signature is cryptographically valid.
         Returns False if invalid or the key is unknown.

@@ -13,12 +13,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
-from utf.thirsty_lang.lexer import Lexer
-from utf.thirsty_lang.parser import Parser
-from utf.thirsty_lang.checker import check_ast
-from utf.thirsty_lang.interpreter import Interpreter, GovernanceViolation
 from utf.tarl.core import PolicyParser
 from utf.tarl.runtime import TarlRuntime
+from utf.thirsty_lang.checker import check_ast
+from utf.thirsty_lang.interpreter import GovernanceViolation, Interpreter
+from utf.thirsty_lang.lexer import Lexer
+from utf.thirsty_lang.parser import Parser
 
 
 def _prog(src):

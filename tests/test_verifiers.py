@@ -14,15 +14,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
+from utf.shadow_thirst import convergence as conv
+from utf.shadow_thirst.core import (
+    CanonicalConvergenceAnalyzer,
+    DeterminismAnalyzer,
+    EffectAnalysis,
+    ShadowModule,
+)
+from utf.thirst_of_gods.core import to_gods
+from utf.thirsty_lang.ast import BlockStmt
 from utf.thirsty_lang.lexer import Lexer
 from utf.thirsty_lang.parser import Parser
-from utf.thirsty_lang.ast import BlockStmt
-from utf.shadow_thirst.core import (
-    CanonicalConvergenceAnalyzer, DeterminismAnalyzer, ShadowModule,
-    EffectAnalysis,
-)
-from utf.shadow_thirst import convergence as conv
-from utf.thirst_of_gods.core import to_gods
 
 
 def _block(code):

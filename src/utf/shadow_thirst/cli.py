@@ -2,11 +2,10 @@
 Shadow Thirst CLI — Check mutations and visualize promotion flow.
 """
 import argparse
-import sys
 import json
-from utf.shadow_thirst.core import (
-    MutationParser, PromotionEngine, AnalysisLevel
-)
+import sys
+
+from utf.shadow_thirst.core import AnalysisLevel, MutationParser, PromotionEngine
 
 
 def main():

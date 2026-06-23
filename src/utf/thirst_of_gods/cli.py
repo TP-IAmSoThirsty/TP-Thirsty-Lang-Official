@@ -7,7 +7,6 @@ Subcommands:
     --target thirsty|js  — Transpile to Thirsty-Lang or JavaScript
 """
 import argparse
-import json
 import os
 import sys
 
@@ -18,17 +17,17 @@ def run_file(file_path: str) -> None:
     Args:
         file_path: Path to the .thirstofgods file.
     """
-    from utf.thirsty_lang.lexer import Lexer
-    from utf.thirsty_lang.parser import Parser
+    from utf.thirst_of_gods.core import ThirstOfGodsError, interpret_gods
     from utf.thirsty_lang.checker import check_ast
     from utf.thirsty_lang.diagnostics import DiagnosticBundle
-    from utf.thirst_of_gods.core import interpret_gods, ThirstOfGodsError
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         source = f.read()
 
     lexer = Lexer(source)
@@ -64,15 +63,15 @@ def check_file(file_path: str) -> None:
     Args:
         file_path: Path to the .thirstofgods file.
     """
+    from utf.thirst_of_gods.core import to_gods, validate_deity_contract
     from utf.thirsty_lang.lexer import Lexer
     from utf.thirsty_lang.parser import Parser
-    from utf.thirst_of_gods.core import to_gods, validate_deity_contract
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         source = f.read()
 
     lexer = Lexer(source)
@@ -117,16 +116,16 @@ def transpile_file(file_path: str, target: str = "thirsty") -> None:
         file_path: Path to the .thirstofgods file.
         target: Target language ("thirsty" or "js").
     """
-    from utf.thirsty_lang.lexer import Lexer
-    from utf.thirsty_lang.parser import Parser
     from utf.thirsty_lang.checker import check_ast
     from utf.thirsty_lang.diagnostics import DiagnosticBundle
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
 
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         source = f.read()
 
     lexer = Lexer(source)

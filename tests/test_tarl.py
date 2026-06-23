@@ -2,14 +2,14 @@
 Tests for T.A.R.L. (Thirsty's Active Resistance Language)
 Tests policy parsing, SafeExpr evaluation, ALLOW/DENY/ESCALATE verdicts, and runtime.
 """
-import sys
 import os
-import tempfile
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from utf.tarl.spec import TarlVerdict, TarlDecision, TarlPolicy, TarlRule, DEFAULT_DENY
 from utf.tarl.core import PolicyParser, SafeExpr, evaluate_policy
 from utf.tarl.runtime import TarlRuntime
+from utf.tarl.spec import DEFAULT_DENY, TarlDecision, TarlVerdict
 
 
 class TestTarlSpec:
@@ -179,36 +179,36 @@ class TestTarlRuntime:
     def test_runtime_basic(self):
         runtime = TarlRuntime()
         policy = """when role == "admin" => ALLOW"""
-        
+
         result = runtime.evaluate({'role': 'admin'}, policy)
         assert result.verdict == TarlVerdict.ALLOW
 
     def test_runtime_cache(self):
         runtime = TarlRuntime()
         policy = """when role == "admin" => ALLOW"""
-        
+
         # First call
         result1 = runtime.evaluate({'role': 'admin'}, policy)
         assert result1.verdict == TarlVerdict.ALLOW
-        
+
         # Second call with same context and policy should use cache
         result2 = runtime.evaluate({'role': 'admin'}, policy)
         assert result2.verdict == TarlVerdict.ALLOW
 
     def test_runtime_lru_policy(self):
         runtime = TarlRuntime()
-        
+
         # Evaluate with multiple policies to test adaptive ordering
         policy_a = """when x == 1 => ALLOW"""
         policy_b = """when x == 2 => DENY"""
         policy_c = """when x == 3 => ESCALATE"""
-        
+
         result_a = runtime.evaluate({'x': 1}, policy_a)
         assert result_a.verdict == TarlVerdict.ALLOW
-        
+
         result_b = runtime.evaluate({'x': 2}, policy_b)
         assert result_b.verdict == TarlVerdict.DENY
-        
+
         result_c = runtime.evaluate({'x': 3}, policy_c)
         assert result_c.verdict == TarlVerdict.ESCALATE
 
@@ -329,27 +329,27 @@ when action == "read" and resource == "public" => ALLOW
 when action == "write" and resource == "system" => DENY
 when source == "external" and port > 1024 => DENY
 when count > 100 => ESCALATE"""
-        
+
         # Test admin
         result = evaluate_policy({'role': 'admin'}, policy_text)
         assert result.verdict == TarlVerdict.ALLOW
-        
+
         # Test user with high level
         result = evaluate_policy({'role': 'user', 'level': 5}, policy_text)
         assert result.verdict == TarlVerdict.ALLOW
-        
+
         # Test user with low level
         result = evaluate_policy({'role': 'user', 'level': 1}, policy_text)
         assert result.verdict == TarlVerdict.DENY
-        
+
         # Test escalate condition
         result = evaluate_policy({'role': 'user', 'action': 'delete', 'resource': 'critical'}, policy_text)
         assert result.verdict == TarlVerdict.ESCALATE
-        
+
         # Test deny condition
         result = evaluate_policy({'role': 'user', 'action': 'write', 'resource': 'system'}, policy_text)
         assert result.verdict == TarlVerdict.DENY
-        
+
         # Test no match - default deny
         result = evaluate_policy({'role': 'guest'}, policy_text)
         assert result.verdict == TarlVerdict.DENY

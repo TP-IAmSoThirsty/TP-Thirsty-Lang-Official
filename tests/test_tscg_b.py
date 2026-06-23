@@ -2,19 +2,28 @@
 Tests for TSCG-B (TSCG Binary Protocol)
 Tests binary frame format, pack/unpack, CRC32, SHA-256, and StreamDecoder.
 """
-import sys
+import hashlib
 import os
 import struct
-import hashlib
+import sys
 import zlib
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from utf.tscg_b.core import (
-    pack_text, unpack_frame, StreamDecoder,
-    MAGIC, VERSION, HEADER_SIZE, MIN_FRAME_SIZE,
-    FLAG_NONE, FLAG_EOF, FLAG_FRAGMENT,
-    encode_text_to_opcodes, decode_opcodes_to_text,
-    opcode_for_symbol, symbol_for_opcode
+    FLAG_EOF,
+    FLAG_FRAGMENT,
+    HEADER_SIZE,
+    MAGIC,
+    MIN_FRAME_SIZE,
+    VERSION,
+    StreamDecoder,
+    decode_opcodes_to_text,
+    encode_text_to_opcodes,
+    opcode_for_symbol,
+    pack_text,
+    symbol_for_opcode,
+    unpack_frame,
 )
 
 
@@ -124,7 +133,7 @@ class TestPackUnpack:
         result = unpack_frame(frame)
         # Recompute SHA-256 to verify
         payload_end = HEADER_SIZE + result['payload_length']
-        crc32_end = payload_end + 4
+        payload_end + 4
         expected_sha256 = hashlib.sha256(
             frame[:payload_end + 4]
         ).digest()
@@ -138,14 +147,14 @@ class TestPackUnpack:
             frame[HEADER_SIZE] ^= 0xFF
         try:
             unpack_frame(bytes(frame))
-            assert False, "Should have raised ValueError for tampered data"
+            raise AssertionError("Should have raised ValueError for tampered data")
         except ValueError:
             pass
 
     def test_unpack_short_frame(self):
         try:
             unpack_frame(b'\x00' * 10)
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError:
             pass
 
@@ -154,7 +163,7 @@ class TestPackUnpack:
         frame[0:4] = b'BAD '
         try:
             unpack_frame(bytes(frame))
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError:
             pass
 
@@ -174,7 +183,7 @@ class TestStreamDecoder:
         frame1 = pack_text("first")
         frame2 = pack_text("second")
         frame3 = pack_text("third")
-        
+
         frames = decoder.feed(frame1 + frame2 + frame3)
         assert len(frames) == 3
         assert frames[0]['text'] == "first"
@@ -184,12 +193,12 @@ class TestStreamDecoder:
     def test_decode_partial_frame(self):
         decoder = StreamDecoder()
         frame = pack_text("partial")
-        
+
         # Feed half the frame
         half = len(frame) // 2
         frames = decoder.feed(frame[:half])
         assert len(frames) == 0  # Not enough data
-        
+
         # Feed the rest
         frames = decoder.feed(frame[half:])
         assert len(frames) == 1
@@ -198,7 +207,7 @@ class TestStreamDecoder:
     def test_decode_with_garbage_prefix(self):
         decoder = StreamDecoder()
         frame = pack_text("clean")
-        
+
         # Feed garbage then a valid frame
         garbage = b'\x00\x01\x02\x03' * 10
         frames = decoder.feed(garbage + frame)
@@ -209,11 +218,11 @@ class TestStreamDecoder:
     def test_stream_decoder_count(self):
         decoder = StreamDecoder()
         assert decoder.frames_decoded == 0
-        
+
         frame = pack_text("one")
         decoder.feed(frame)
         assert decoder.frames_decoded == 1
-        
+
         frame2 = pack_text("two")
         decoder.feed(frame2)
         assert decoder.frames_decoded == 2
@@ -230,14 +239,14 @@ class TestStreamDecoder:
         decoder = StreamDecoder()
         frame1 = pack_text("frame1")
         frame2 = pack_text("frame2")
-        
+
         # Feed complete frame1 + half of frame2
         half2 = len(frame2) // 2
         combined = frame1 + frame2[:half2]
         frames = decoder.feed(combined)
         assert len(frames) == 1  # Only frame1 complete
         assert frames[0]['text'] == "frame1"
-        
+
         # Feed rest of frame2
         frames = decoder.feed(frame2[half2:])
         assert len(frames) == 1
@@ -250,40 +259,40 @@ class TestE2E:
     def test_full_roundtrip(self):
         """Pack text, extract raw bytes, unpack, verify all fields."""
         original = "The quick brown fox jumps over the lazy dog"
-        
+
         frame = pack_text(original)
-        
+
         # Verify frame structure
         assert frame[:4] == MAGIC
         assert frame[4] == VERSION
-        
+
         result = unpack_frame(frame)
-        
+
         # Verify content
         assert result['text'] == original
         assert result['payload_length'] == len(original.encode('utf-8'))
-        
+
         # Verify CRC32 is correct
         header = frame[:HEADER_SIZE]
         payload = frame[HEADER_SIZE:HEADER_SIZE + result['payload_length']]
         expected_crc32 = zlib.crc32(header + payload) & 0xFFFFFFFF
         assert result['crc32'] == expected_crc32
-        
+
         # Verify SHA-256 is correct
         payload_end = HEADER_SIZE + result['payload_length']
-        crc32_end = payload_end + 4
+        payload_end + 4
         expected_sha256 = hashlib.sha256(frame[:payload_end + 4]).digest()
         assert result['sha256'] == expected_sha256
 
     def test_stream_with_resync(self):
         """Test that the stream decoder can handle interleaved garbage."""
         decoder = StreamDecoder()
-        
+
         valid_frames = []
         for i in range(5):
             frame = pack_text(f"message_{i}")
             valid_frames.append(frame)
-        
+
         # Interleave with garbage
         stream = b''
         for i, f in enumerate(valid_frames):
@@ -291,10 +300,10 @@ class TestE2E:
                 stream += b'\xDE\xAD\xBE\xEF' * 5 + f
             else:
                 stream += f + b'\xCA\xFE\xBA\xBE' * 3
-        
+
         frames = decoder.feed(stream)
         assert len(frames) == 5
-        
+
         for i, f in enumerate(frames):
             assert f['text'] == f"message_{i}"
 

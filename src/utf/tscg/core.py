@@ -2,11 +2,8 @@
 TSCG — Thirst's Symbolic Constitutional Grammar
 9 core + 7 extended symbols with parser, canonical normalization, and checksum.
 """
-import re
 import hashlib
 from dataclasses import dataclass
-from typing import Optional, Union, List
-
 
 # Core symbols (opcodes 0x00-0x08)
 SYMBOLS = {

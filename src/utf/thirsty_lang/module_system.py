@@ -4,13 +4,11 @@ Import resolution, 16 stdlib namespaces, and 16 global builtins.
 """
 import hashlib
 import json
-import math
 import os
 import random
 import time
 import uuid
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 # Module cache: store resolved modules by import path
 ModuleCache: dict[str, object] = {}
@@ -23,7 +21,7 @@ ModuleCache: dict[str, object] = {}
 def _make_time_module() -> dict:
     """thirst::time — Time utilities."""
     def now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def epoch_ms() -> int:
         return int(time.time() * 1000)
@@ -104,7 +102,7 @@ def _make_reservoir_module() -> dict:
 def _make_fs_module() -> dict:
     """thirst::fs — File system operations."""
     def read_file(path: str) -> str:
-        with open(path, 'r') as f:
+        with open(path) as f:
             return f.read()
 
     def write_file(path: str, data: str) -> int:
@@ -196,8 +194,8 @@ def _make_json_module() -> dict:
 
 def _make_http_module() -> dict:
     """thirst::http — HTTP client (stub)."""
-    import urllib.request
     import urllib.parse
+    import urllib.request
 
     def get(url: str) -> str:
         try:
@@ -436,7 +434,7 @@ def _make_sqlite_module() -> dict:
         cursor = conn.execute(sql)
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
         rows = cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
 
     def execute(conn_id: str, sql: str) -> dict:
         conn = _connections.get(conn_id)
@@ -585,7 +583,7 @@ def load_lockfile(cwd: str = ".") -> dict:
     if not os.path.exists(lock_path):
         return {}
     try:
-        with open(lock_path, "r") as f:
+        with open(lock_path) as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return {}
@@ -622,8 +620,8 @@ def resolve_import(path_str: str, locked: bool = False) -> object:
         lock = load_lockfile(".")
         if not lock or "dependencies" not in lock or not lock["dependencies"]:
             raise ImportError(
-                f"Lockfile check failed: thirsty.lock not found or empty. "
-                f"Run 'thirsty lock' first to generate it."
+                "Lockfile check failed: thirsty.lock not found or empty. "
+                "Run 'thirsty lock' first to generate it."
             )
         # Extract dependency name from path_str (e.g. "thirst::crypto" -> "crypto")
         dep_name = path_str

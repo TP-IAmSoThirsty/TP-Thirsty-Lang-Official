@@ -17,11 +17,10 @@ Multiple groups in a policy_set are combined via meet (strictest wins).
 from __future__ import annotations
 
 import os
-from typing import Dict, FrozenSet, List, Optional, Union
 
 from utf.tarl.spec import (
-    CompositionOp,
     DEFAULT_DENY,
+    CompositionOp,
     SetOp,
     TarlDecision,
     TarlPolicy,
@@ -50,25 +49,25 @@ class PolicyComposer:
     """
 
     def __init__(self, base_path: str = "."):
-        self._policies: Dict[str, TarlPolicy] = {}
-        self._sets: Dict[str, TarlPolicySet] = {}
+        self._policies: dict[str, TarlPolicy] = {}
+        self._sets: dict[str, TarlPolicySet] = {}
         self._base_path = base_path
 
     # ── Registration ─────────────────────────────────────────────────────────
 
-    def register(self, policy: TarlPolicy) -> "PolicyComposer":
+    def register(self, policy: TarlPolicy) -> PolicyComposer:
         """Register a TarlPolicy by name. Returns self for chaining."""
         self._policies[policy.name] = policy
         return self
 
-    def register_set(self, policy_set: TarlPolicySet) -> "PolicyComposer":
+    def register_set(self, policy_set: TarlPolicySet) -> PolicyComposer:
         """Register a TarlPolicySet by name. Returns self for chaining."""
         self._sets[policy_set.name] = policy_set
         return self
 
     def register_from_text(
-        self, text: str, name: Optional[str] = None
-    ) -> "PolicyComposer":
+        self, text: str, name: str | None = None
+    ) -> PolicyComposer:
         """
         Parse text and register all policies and policy_sets it contains.
         Returns self for chaining.
@@ -85,7 +84,7 @@ class PolicyComposer:
                 self._policies[item.name] = item
         return self
 
-    def load_file(self, path: str) -> "PolicyComposer":
+    def load_file(self, path: str) -> PolicyComposer:
         """
         Read a .tarl file and register everything it contains.
         Paths are resolved relative to self._base_path.
@@ -98,11 +97,11 @@ class PolicyComposer:
         with open(full, encoding="utf-8") as fh:
             return self.register_from_text(fh.read())
 
-    def names(self) -> List[str]:
+    def names(self) -> list[str]:
         """All registered policy names."""
         return list(self._policies.keys())
 
-    def set_names(self) -> List[str]:
+    def set_names(self) -> list[str]:
         """All registered policy_set names."""
         return list(self._sets.keys())
 
@@ -131,10 +130,10 @@ class PolicyComposer:
         self,
         policy: TarlPolicy,
         context: dict,
-        chain: FrozenSet[str],
+        chain: frozenset[str],
     ) -> TarlDecision:
         """Dispatch to the correct composition handler."""
-        from utf.tarl.core import evaluate_policy, _check_policy_temporal
+        from utf.tarl.core import _check_policy_temporal, evaluate_policy
 
         # Phase 5: temporal window check before any rule evaluation.
         # If the policy has a revert_to target registered in this composer,
@@ -168,7 +167,7 @@ class PolicyComposer:
         self,
         policy: TarlPolicy,
         context: dict,
-        chain: FrozenSet[str],
+        chain: frozenset[str],
     ) -> TarlDecision:
         """
         EXTENDS semantics:
@@ -205,7 +204,7 @@ class PolicyComposer:
         self,
         policy: TarlPolicy,
         context: dict,
-        chain: FrozenSet[str],
+        chain: frozenset[str],
     ) -> TarlDecision:
         """
         RESTRICTS semantics:
@@ -242,9 +241,9 @@ class PolicyComposer:
 
     def _inject_includes(
         self,
-        refs: List[TarlPolicyRef],
+        refs: list[TarlPolicyRef],
         context: dict,
-        chain: FrozenSet[str],
+        chain: frozenset[str],
     ) -> dict:
         """
         Pre-evaluate each INCLUDE'd policy and inject its verdict into ctx.
@@ -302,8 +301,8 @@ class PolicyComposer:
                 reason=f"policy_set {name}: no groups defined",
             )
 
-        group_verdicts: List[TarlVerdict] = []
-        group_summaries: List[str] = []
+        group_verdicts: list[TarlVerdict] = []
+        group_summaries: list[str] = []
 
         for op, policy_names in ps.groups:
             dec = self._evaluate_group(op, policy_names, context)
@@ -322,11 +321,11 @@ class PolicyComposer:
     def _evaluate_group(
         self,
         op: SetOp,
-        policy_names: List[str],
+        policy_names: list[str],
         context: dict,
     ) -> TarlDecision:
         """Evaluate a single combine group using the given operator."""
-        verdicts: List[TarlVerdict] = []
+        verdicts: list[TarlVerdict] = []
         for pname in policy_names:
             if pname in self._policies:
                 dec = self._evaluate_policy(
@@ -381,7 +380,7 @@ class PolicyComposer:
             )
         return self._policies[name]
 
-    def _check_cycle(self, name: str, chain: FrozenSet[str]) -> None:
+    def _check_cycle(self, name: str, chain: frozenset[str]) -> None:
         if name in chain:
             path = " -> ".join(sorted(chain)) + f" -> {name}"
             raise CompositionError(
