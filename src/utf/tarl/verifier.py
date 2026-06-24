@@ -189,8 +189,7 @@ def _check_trace(proof: TarlProof) -> bool:
             if not matched:
                 return False  # claimed match but trace says no
             break
-        if i > proof.rule_index:
-            return False  # trace has entries beyond the first match
+        # i can never exceed rule_index: the matched entry above breaks the loop.
 
     # Trace must end at rule_index (length == rule_index + 1)
     if len(proof.trace) != proof.rule_index + 1:

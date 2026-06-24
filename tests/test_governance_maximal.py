@@ -114,9 +114,13 @@ class TestCapabilityGates:
                 policy_text='policy p\nwhen action == "read" => ALLOW\n',
                 authority='admin')
 
-    def test_gate_inactive_without_policy(self):
-        # No policy attached → capability gates are inert; pour runs.
-        _interp('module m: governed\nglass g(){ pour "hi" }\ndrink _ = g()\n')
+    def test_gate_fail_closed_without_policy(self):
+        # Fail-closed: governed mode with no policy engine cannot authorize a
+        # gated capability, so the pour (write) is DENIED — governed mode never
+        # implies authority. (Previously this ran open; that was the bug.)
+        with pytest.raises(GovernanceViolation):
+            _interp('module m: governed\nglass g(){ pour "hi" }\n'
+                    'drink _ = g()\n')
 
 
 # ── Temporal windows ────────────────────────────────────────────────────────

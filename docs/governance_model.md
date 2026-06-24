@@ -84,7 +84,16 @@ default-deny decision (`Interpreter._enforce_governance`):
 3. **T.A.R.L. routing** — when a `TarlRuntime` is attached
    (`interpreter.attach_tarl(runtime)`) and an authority context is set, the
    call is routed through the policy engine. A non-`ALLOW` verdict denies, and
-   the signed `TarlProof` is recorded on `interpreter._last_proof`.
+   a `TarlProof` certificate is recorded on `interpreter._last_proof`.
+
+   The proof binds the policy hash, the canonical context hash, the matched
+   rule, the verdict, and the evaluation trace. It is **unsigned by default**.
+   Signing is opt-in and uses **HMAC-SHA256**, a *symmetric* MAC: it detects
+   tampering only against a holder who does not know the key — anyone holding
+   the key (including the verifier) can forge a valid tag. It is **not** a
+   non-repudiable (asymmetric) signature. The `thirsty run` path emits unsigned
+   proofs. Treat the proof as an integrity/audit record, not as cryptographic
+   attestation of authorship.
 4. **Default** — in `governed` mode, a call that no layer explicitly allowed is
    **denied** (deny-by-default).
 

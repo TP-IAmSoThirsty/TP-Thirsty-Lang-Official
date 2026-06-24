@@ -87,7 +87,7 @@ def main():
         mermaid = engine.generate_mermaid(module, verdict, results)
 
         if args.output:
-            with open(args.output, 'w') as f:
+            with open(args.output, 'w', encoding='utf-8') as f:
                 f.write(mermaid)
             print(f"Mermaid flowchart written to {args.output}")
         else:

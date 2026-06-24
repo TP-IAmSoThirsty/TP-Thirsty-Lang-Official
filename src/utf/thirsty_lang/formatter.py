@@ -133,8 +133,7 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
 
     elif isinstance(node, PourStmt):
         val = format_expr(node.value, 0)
-        target = f" -> {format_expr(node.target, 0)}" if node.target else ""
-        return f"{prefix}pour {val}{target}"
+        return f"{prefix}pour {val}"
 
     elif isinstance(node, SipStmt):
         target = f" -> {format_expr(node.target, 0)}" if node.target else ""
@@ -223,10 +222,6 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
             parts.append(f"{INDENT * (indent + 1)}canonical {{\n{canonical}\n{INDENT * (indent + 1)}}}")
         body = "\n".join(parts)
         return f"{prefix}mutation {node.name} {{\n{body}\n{prefix}}}"
-
-    elif isinstance(node, EnumDecl):
-        variants_str = ", ".join(node.variants)
-        return f"{prefix}enum {node.name} = {variants_str}"
 
     return f"{prefix}(unknown node: {type(node).__name__})"
 

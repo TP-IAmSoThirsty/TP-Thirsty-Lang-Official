@@ -384,7 +384,8 @@ def _make_collections_module() -> dict:
         return result
 
     def zip(*lsts: list) -> list:
-        return list(zip(*lsts))
+        import builtins
+        return list(builtins.zip(*lsts, strict=False))
 
     return {
         "map": map,
@@ -643,20 +644,38 @@ def resolve_import(path_str: str, locked: bool = False) -> object:
         ModuleCache[path_str] = module
         return module
 
-    # Check for 'thirst::module' prefix
+    # A 'thirst::' path not matched in STDLIB_MODULES above is an unknown module.
     if path_str.startswith("thirst::"):
-        module_name = path_str[len("thirst::"):]
-        full_path = f"thirst::{module_name}"
-        if full_path in STDLIB_MODULES:
-            module = STDLIB_MODULES[full_path]()
-            ModuleCache[full_path] = module
-            return module
         raise ImportError(f"Module not found: {path_str}")
 
-    # Try to load from file
+    # Try to load from a .thirsty source file: parse, interpret, and expose its
+    # top-level bindings (functions and `drink` values) as a module dict — the
+    # same shape stdlib modules use, so `import "x.thirsty" as m; m.fn(...)`
+    # works through the interpreter's dict member access.
     if path_str.endswith(".thirsty"):
-        # Would load and parse a .thirsty file here
-        raise ImportError(f"File imports not yet implemented: {path_str}")
+        if not os.path.exists(path_str):
+            raise ImportError(f"File not found: {path_str}")
+        # Lazy imports: the interpreter imports this module at top level.
+        from utf.thirsty_lang.interpreter import Interpreter
+        from utf.thirsty_lang.lexer import Lexer
+        from utf.thirsty_lang.parser import Parser
+
+        with open(path_str) as f:
+            source = f.read()
+        parser = Parser(Lexer(source).lex())
+        ast = parser.parse()
+        if parser.errors:
+            raise ImportError(f"Failed to import '{path_str}': {parser.errors[0]}")
+        interp = Interpreter()
+        baseline = set(interp.env.vars)  # builtins to exclude from the module
+        interp.interpret(ast)
+        module = {
+            name: value
+            for name, value in interp.env.vars.items()
+            if name not in baseline
+        }
+        ModuleCache[path_str] = module
+        return module
 
     raise ImportError(f"Module not found: {path_str}")
 

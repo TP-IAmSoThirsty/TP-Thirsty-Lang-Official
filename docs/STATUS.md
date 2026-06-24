@@ -25,7 +25,8 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | `refill (x in xs)` loop accumulation | Real | `tests/test_examples.py` |
 | UTF-8-safe CLI output on Windows (cp1252) | Real | `src/utf/console.py` (`enable_utf8`), shared by all CLIs |
 | Every shipped example parses, type-checks, and runs clean | Real | `tests/test_examples.py` |
-| `let`, `for…in`, `:=`, `strict`/`pure` modes | Roadmap | not implemented — see `docs/GRAMMAR.md` |
+| `let` (immutable binding), `for … in` keyword loop, `:=` (define mutable) | Real | `tests/test_language_features.py` |
+| `strict` (requires initialization) / `pure` (no I/O) module modes | Real | `tests/test_language_features.py` |
 
 ## Governance (maximal)
 

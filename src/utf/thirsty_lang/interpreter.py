@@ -329,6 +329,9 @@ class Interpreter:
         return result
 
     def _execute_variable_decl(self, stmt: VariableDecl) -> object:
+        if self.mode == "strict" and stmt.init_expr is None:
+            raise RuntimeError(
+                f"'strict' module requires '{stmt.name}' to be initialized")
         value = None
         if stmt.init_expr:
             value = self._evaluate(stmt.init_expr)
@@ -393,30 +396,84 @@ class Interpreter:
         raise ReturnException(value)
 
     def _execute_pour(self, stmt: PourStmt) -> object:
+        if self.mode == "pure":
+            raise RuntimeError(
+                "I/O ('pour') is not allowed in a 'pure' module")
         self._gate_capability("write", "stdout")
         value = self._evaluate(stmt.value)
         print(value)
         return None  # pour handles its own output — no value propagation
 
     def _execute_sip(self, stmt: SipStmt) -> object:
+        if self.mode == "pure":
+            raise RuntimeError(
+                "I/O ('sip') is not allowed in a 'pure' module")
         self._gate_capability("read", "stdin")
         value = input()
         if isinstance(stmt.target, Identifier):
             self.env.set(stmt.target.name, value)
         return value
 
+    def _make_decision_proof(self, *, source: str, context: dict,
+                             verdict, matched_condition: str, trace: list):
+        """Build an (unsigned) ``TarlProof`` for a governance decision made
+        outside the policy engine — a fail-closed capability denial or a
+        design-by-contract verdict. Same certificate shape as a policy proof
+        (``rule_index = -1``, no rule), so every governed decision carries a
+        proof. Unsigned; see utf/tarl/spec.py:TarlProof for the signing model.
+        """
+        import hashlib
+        import json
+        from datetime import UTC, datetime
+
+        from utf.tarl.spec import TarlProof
+        policy_hash = "sha256:" + hashlib.sha256(
+            source.encode("utf-8")).hexdigest()
+        ctx_bytes = json.dumps(
+            context, sort_keys=True, default=str, separators=(",", ":")
+        ).encode("utf-8")
+        context_hash = "sha256:" + hashlib.sha256(ctx_bytes).hexdigest()
+        return TarlProof(
+            policy_hash=policy_hash,
+            context_hash=context_hash,
+            rule_index=-1,
+            matched_condition=matched_condition,
+            verdict=verdict,
+            evaluated_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            trace=trace,
+            signature="",
+            key_id="",
+        )
+
     def _gate_capability(self, action: str, target: str) -> None:
         """Capability gate for sensitive operations (imports, I/O) in governed
-        mode. Active only when a TARL policy engine + authority are attached;
-        a non-ALLOW verdict denies the operation with a proof. Deny-by-default
-        (no matching rule → DENY) comes from the policy engine itself.
+        mode. Fail-closed: in governed mode a gated capability is denied unless
+        a TARL policy engine + authority are attached AND return ALLOW. With no
+        policy engine wired, governed mode cannot authorize the capability, so
+        it is denied with a proof — governed mode never implies authority.
+        Deny-by-default (no matching rule → DENY) comes from the engine itself.
+        Core (ungoverned) mode is unaffected.
         """
-        if (self.mode != "governed" or self.tarl_runtime is None
-                or self.authority is None):
+        if self.mode != "governed":
             return
         from utf.tarl.spec import TarlVerdict
         ctx = {"action": action, "target": str(target),
-               "authority": self.authority}
+               "authority": self.authority or ""}
+        # Fail-closed: governed but no policy engine/authority to grant it.
+        if self.tarl_runtime is None or self.authority is None:
+            proof = self._make_decision_proof(
+                source="<fail-closed: governed mode without policy engine>",
+                context=ctx, verdict=TarlVerdict.DENY, matched_condition="",
+                trace=[{"kind": "fail-closed", "action": action,
+                        "target": str(target),
+                        "reason": "no policy engine wired to authorize "
+                                  "capability in governed mode"}])
+            self._last_proof = proof
+            raise GovernanceViolation(
+                f"{action} {target}",
+                "fail-closed: governed mode requires a policy engine to "
+                "authorize this capability (run with --policy)",
+                proof)
         decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
         self._last_proof = proof
         if decision.verdict != TarlVerdict.ALLOW:
@@ -605,6 +662,38 @@ class Interpreter:
         except Exception as exc:
             return (False, f"{label} error: {exc}")
 
+    def _contract_predicates(self, decl, phase):
+        """Yield (expr, annotation, label) for the contract predicates that
+        apply at this boundary: requires + invariant on entry, ensures +
+        invariant on exit. Empty when ``decl`` carries no contract.
+        """
+        if decl is None:
+            return
+        if phase == "entry":
+            if getattr(decl, "requires_expr", None) is not None:
+                yield (decl.requires_expr, decl.requires_annotation,
+                       "precondition")
+            if getattr(decl, "invariant_expr", None) is not None:
+                yield (decl.invariant_expr, decl.invariant_annotation,
+                       "invariant (entry)")
+        else:
+            if getattr(decl, "ensures_expr", None) is not None:
+                yield (decl.ensures_expr, decl.ensures_annotation,
+                       "postcondition")
+            if getattr(decl, "invariant_expr", None) is not None:
+                yield (decl.invariant_expr, decl.invariant_annotation,
+                       "invariant (exit)")
+
+    def _make_contract_proof(self, decl, phase, context, verdict,
+                             matched_condition, trace):
+        """Proof certificate for a design-by-contract verdict (Fix: every
+        governed boundary decision carries a proof, not just policy ones)."""
+        name = getattr(decl, "name", "<anon>") if decl is not None else "<anon>"
+        source = f"contract:{name}:{phase}"
+        return self._make_decision_proof(
+            source=source, context=context, verdict=verdict,
+            matched_condition=matched_condition, trace=trace)
+
     def _enforce_governance(self, context: dict, decl=None, phase="entry",
                             enforce_mode_guard=True):
         """Decide whether a governed call boundary is allowed.
@@ -612,50 +701,47 @@ class Interpreter:
         Returns ``(allowed, reason, proof)``. Design-by-contract predicates
         (requires/invariant at entry; ensures/invariant at exit) hold unless a
         declared predicate fails. The TARL layer adds deny-by-default access
-        control when a policy engine + authority are configured.
+        control when a policy engine + authority are configured. Every decision
+        on a contract-bearing boundary carries a proof — ALLOW and DENY alike.
         """
+        from utf.tarl.spec import TarlVerdict
         proof = None
         if phase == "entry":
             # Cross-mode guard (E053): top-level governed fn from core is denied.
             if decl is not None and enforce_mode_guard and self.mode != "governed":
                 return (False,
                         "governed function invoked outside governed mode", None)
-            if decl is not None and getattr(decl, "requires_expr", None) is not None:
-                ok, reason = self._eval_predicate(
-                    decl.requires_expr, decl.requires_annotation, "precondition")
-                if not ok:
-                    return (False, reason, None)
-            if decl is not None and getattr(decl, "invariant_expr", None) is not None:
-                ok, reason = self._eval_predicate(
-                    decl.invariant_expr, decl.invariant_annotation,
-                    "invariant (entry)")
-                if not ok:
-                    return (False, reason, None)
-            # TARL policy routing (deny-by-default access control).
+
+        # Design-by-contract predicates for this phase.
+        trace = []
+        for expr, ann, label in self._contract_predicates(decl, phase):
+            ok, reason = self._eval_predicate(expr, ann, label)
+            trace.append({"predicate": label, "annotation": ann or "<expr>",
+                          "phase": phase, "result": "pass" if ok else "fail"})
+            if not ok:
+                deny = self._make_contract_proof(
+                    decl, phase, context, TarlVerdict.DENY, ann or "", trace)
+                self._last_proof = deny
+                return (False, reason, deny)
+        if trace:  # contract was checked and held → certify it
+            proof = self._make_contract_proof(
+                decl, phase, context, TarlVerdict.ALLOW, "", trace)
+
+        if phase == "entry":
+            # TARL policy routing (deny-by-default access control). A policy
+            # proof supersedes the contract proof as the boundary certificate.
             if self.tarl_runtime is not None and self.authority is not None:
-                from utf.tarl.spec import TarlVerdict
                 policy_ctx = dict(context)
                 policy_ctx["authority"] = self.authority
                 if decl is not None:
                     policy_ctx.setdefault("action", decl.name)
-                decision, proof = self.tarl_runtime.evaluate_with_proof(policy_ctx)
+                decision, proof = self.tarl_runtime.evaluate_with_proof(
+                    policy_ctx)
                 if decision.verdict != TarlVerdict.ALLOW:
                     return (False,
-                            decision.reason or f"policy verdict: {decision.verdict}",
+                            decision.reason
+                            or f"policy verdict: {decision.verdict}",
                             proof)
-            return (True, "allowed", proof)
-
-        # phase == "exit"
-        if decl is not None and getattr(decl, "ensures_expr", None) is not None:
-            ok, reason = self._eval_predicate(
-                decl.ensures_expr, decl.ensures_annotation, "postcondition")
-            if not ok:
-                return (False, reason, None)
-        if decl is not None and getattr(decl, "invariant_expr", None) is not None:
-            ok, reason = self._eval_predicate(
-                decl.invariant_expr, decl.invariant_annotation, "invariant (exit)")
-            if not ok:
-                return (False, reason, None)
         return (True, "allowed", proof)
 
     def _call_user_fn(self, func_decl: FunctionDecl, args: list) -> object:

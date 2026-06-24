@@ -44,9 +44,11 @@ ERROR_CODES = {
     "E042": "Circular import detected for module '{module}'",
 
     # Governance errors (E050-E059)
+    # E051/E052 removed: never reachable. The parser only builds a
+    # GovernedFunctionDecl when a contract clause exists, so "missing requires"
+    # cannot occur, and requires-not-satisfied is enforced at runtime (a
+    # GovernanceViolation), not as a static diagnostic.
     "E050": "Governance violation: {detail}",
-    "E051": "Requires annotation not satisfied: {detail}",
-    "E052": "Governed function '{name}' missing requires annotation",
     "E053": "Cannot call governed function '{name}' from core mode",
 
     # Reservoir errors (E060-E069)

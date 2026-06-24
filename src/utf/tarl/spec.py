@@ -230,7 +230,7 @@ class TarlPolicySet:
 @dataclass
 class TarlProof:
     """
-    Cryptographic certificate of a policy evaluation.
+    Integrity certificate of a policy evaluation.
 
     Π = (H(P), H(c), k, v, T, σ)
       H(P) — SHA-256 of exact policy source used
@@ -238,7 +238,13 @@ class TarlProof:
       k    — matched rule index (-1 = DEFAULT_DENY)
       v    — final verdict
       T    — evaluation trace: [{rule_index, condition, matched}, ...]
-      σ    — HMAC-SHA256 or Ed25519 signature over canonical encoding
+      σ    — optional HMAC-SHA256 tag over the canonical encoding
+
+    σ is **unsigned by default** and, when present, is a *symmetric* MAC
+    (HMAC-SHA256): it is forgeable by any party that holds the key, including
+    the verifier. It is NOT a non-repudiable (asymmetric) signature; no Ed25519
+    path is implemented. Use the proof as an integrity/audit record, not as
+    cryptographic attestation of authorship.
     """
     policy_hash: str          # "sha256:<hex>"
     context_hash: str         # "sha256:<hex>"

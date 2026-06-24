@@ -413,11 +413,10 @@ class Checker:
             self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
 
     def _check_governed_function_decl(self, stmt: GovernedFunctionDecl):
-        # A governed function is well-formed with any contract clause
-        # (requires / ensures / invariant); the parser guarantees at least one.
-        if not (stmt.requires_annotation or stmt.ensures_annotation
-                or stmt.invariant_annotation):
-            self.errors.append(make_error("E052", span=stmt.span, name=stmt.name))
+        # The parser only builds a GovernedFunctionDecl when at least one
+        # contract clause (requires / ensures / invariant) is present, so the
+        # "missing contract" case is structurally impossible here — no runtime
+        # check needed. Type-check the function body like any other.
         self._check_function_decl(FunctionDecl(
             name=stmt.name, params=stmt.params,
             return_type=stmt.return_type, body=stmt.body, span=stmt.span

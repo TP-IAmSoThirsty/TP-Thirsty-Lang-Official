@@ -1,0 +1,12 @@
+// T.A.R.L. policy for the governed_agent_runner example.
+//
+// Governed mode is fail-closed: a gated capability (write/read/import) and a
+// governed-function entry are DENIED unless a wired policy returns ALLOW. This
+// policy is what the example-lock runner attaches so main.thirsty can actually
+// execute — governance enforced, not implied. Default deny at the bottom.
+
+policy agent_runner
+
+when action == "validate" => ALLOW
+when action == "write" => ALLOW
+when true => DENY
