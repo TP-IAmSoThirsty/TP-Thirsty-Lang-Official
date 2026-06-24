@@ -9,6 +9,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-06-24
+
+### Added — Build backends, file imports, LSP, and language features
+
+- **Build backends:** `thirsty build --target llvm-ir` emits textual LLVM IR;
+  `llvm-asm`/`llvm-obj`/`llvm-exe`/`llvm-jit` drive `llc`/`clang`/`lli` when a
+  toolchain is present (clear error otherwise). `--target wasm-pyodide` emits a
+  Pyodide (Python-in-WebAssembly) HTML bundle that runs the program in-browser.
+- **File imports:** `import "path/to/x.thirsty"` now loads, parses, interprets,
+  and exposes a module's top-level functions and values.
+- **Language server:** `thirsty lsp --stdio` and `thirsty lsp --port N` run a
+  real JSON-RPC language server (syntax diagnostics, hover, go-to-definition).
+- **Language features:** `let` (immutable binding), the `for … in` keyword loop,
+  `:=` (define-and-assign a new mutable binding), and the `strict` (every
+  binding must be initialized) and `pure` (no I/O) module modes.
+
+### Fixed — Cross-platform and correctness bugs
+
+- `thirst::collections.zip` recursed infinitely (shadowed the builtin) — fixed.
+- The formatter crashed on `pour` statements (`PourStmt.target`) — fixed.
+- Windows `UnicodeEncodeError` (cp1252) writing the shadow-thirst mermaid graph
+  and the `thirsty docs` HTML — both now write UTF-8.
+
+### Changed — Quality gate
+
+- Test suite expanded to ~995 tests; coverage raised to **90%+** and the CI
+  coverage floor lifted from 55% to **90%**. Removed several unreachable dead
+  branches surfaced by the coverage work.
+
+### Fixed — Operator precedence (breaking semantic correction)
+
+- **Critical:** the expression parser's precedence table was dead code.
+  `_get_precedence()` was read *after* the operator was consumed, so it saw the
+  right operand (precedence 0) and every binary operator collapsed to one
+  right-associative level (`2 * 3 + 4` → 14; `10 - 2 - 3` → 11). Predicates in
+  `requires`/`ensures`/`invariant` therefore did not mean what was written, so
+  deny-by-default guards failed **open** (`balance - amount >= 0` parsed as
+  `balance - (amount >= 0)`). The operator's precedence is now captured before
+  advancing; arithmetic, comparison, and logic bind correctly and
+  left-associatively. Unary `-` binds tighter than `*`; logical `not` binds
+  looser than comparison. This changes the value of any program that relied on
+  the old (incorrect) parse. Locked in by `tests/test_parser_precedence.py`.
+
+### Changed — Governance fails closed
+
+- **High:** the capability gate no longer fails open. In `governed` mode a gated
+  capability (`pour`/`sip`/import) is now **denied with a proof** unless a TARL
+  policy engine + authority are wired and return ALLOW. Previously, governed
+  mode without a policy ran ungated — governed mode implied authority. Core
+  (ungoverned) mode is unaffected. Locked in by `tests/test_gate_fail_closed.py`.
+- **Medium:** every governed boundary decision now carries a proof. Contract
+  (`requires`/`ensures`/`invariant`) ALLOW and DENY emit a `TarlProof`
+  certificate (predicate trace, verdict), not just policy-engine decisions.
+
+### Fixed — Documentation truth
+
+- **Medium:** corrected "signed `TarlProof`" overclaims (README,
+  `docs/governance_model.md`, `spec.py`, `runtime.py`). Proofs are **unsigned by
+  default**; signing is opt-in HMAC-SHA256 — a *symmetric* MAC, forgeable by any
+  key holder, **not** a non-repudiable signature. No Ed25519 path is implemented.
+- **Low:** removed dead diagnostics **E051** (never raised) and **E052**
+  (unreachable — the parser only builds a `GovernedFunctionDecl` when a contract
+  clause exists).
+
+---
+
 ## [0.4.0] - 2026-06-22
 
 This release makes the governance stack durable: the language runs its own
@@ -22,8 +88,9 @@ rather than grep, and CI is the gate.
   (design-by-contract, valid in any mode).
 - Capability gates: in governed mode, module imports and I/O (`pour`/`sip`) are
   routed through the attached `TarlRuntime` (`evaluate_with_proof`), deny-by-
-  default, with a signed `TarlProof` on denial. Time-windowed policies govern a
-  call through the same path.
+  default, with a `TarlProof` on denial (unsigned by default; see the
+  Unreleased note correcting the earlier "signed" wording). Time-windowed
+  policies govern a call through the same path.
 - Checker: function/class **hoisting** (forward references and mutual recursion
   now resolve), static **E053** for a governed call from `core` mode.
 

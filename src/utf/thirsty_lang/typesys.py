@@ -254,11 +254,8 @@ def is_assignable(source: Type, target: Type) -> bool:
     # Int -> Float widening
     if isinstance(source, IntType) and isinstance(target, FloatType):
         return True
-    # Enum variants compatibility
-    if isinstance(source, EnumType) and isinstance(target, EnumType):
-        return source.name == target.name
-    if isinstance(source, StructType) and isinstance(target, StructType):
-        return source.name == target.name
+    # Different type constructors are not assignable. (Same-named enums/structs
+    # are already accepted above by the same-class check.)
     return False
 
 

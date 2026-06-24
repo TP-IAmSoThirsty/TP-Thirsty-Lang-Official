@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thirsty-lang"
-version = "0.4.0"
+version = "0.5.0"
 description = "A governance-first programming language family"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -51,6 +51,19 @@ include = ["utf.*", "utf", "thirsty_lang"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["utf"]
+
+[tool.coverage.report]
+# Exclude only conventional non-executable markers — never the implemented
+# feature code. Module entrypoints and type-checking-only imports never run
+# under pytest.
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
 
 [tool.black]
 line-length = 88

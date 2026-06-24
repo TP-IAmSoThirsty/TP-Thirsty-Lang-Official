@@ -139,7 +139,7 @@ glass withdraw(amt) requires amt > 0 {
 
 1. **In-language precondition** — the `requires` expression is evaluated at call time; a falsy result raises `GovernanceViolation`.
 2. **Cross-mode guard** — a governed function invoked outside `governed` mode is denied (the runtime counterpart of checker error `E053`).
-3. **T.A.R.L. routing** — attach a policy engine (`Interpreter.attach_tarl(...)`, or `thirsty run … --authority <tag> --policy <file.tarl>`); a non-ALLOW verdict denies and a signed `TarlProof` is recorded. Governance denials are a hard floor — `spillage` handlers cannot swallow them.
+3. **T.A.R.L. routing** — attach a policy engine (`Interpreter.attach_tarl(...)`, or `thirsty run … --authority <tag> --policy <file.tarl>`); a non-ALLOW verdict denies and a `TarlProof` certificate is recorded (unsigned by default; HMAC-SHA256 signing is opt-in and is a *symmetric* MAC, not a non-repudiable signature — see [docs/governance_model.md](docs/governance_model.md)). Governance denials are a hard floor — `spillage` handlers cannot swallow them.
 
 ### 🟡 Tier 4: Shadow Thirst
 

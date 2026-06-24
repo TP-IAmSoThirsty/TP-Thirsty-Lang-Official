@@ -3,8 +3,10 @@ T.A.R.L. Runtime — LRU-cached, parallel policy evaluation.
 
 Phase 2: register_source(name, provider) — bind a live data provider to
          source:name references in policy conditions.
-Phase 4: evaluate_with_proof() — evaluate and return a signed TarlProof
-         alongside the TarlDecision.
+Phase 4: evaluate_with_proof() — evaluate and return a TarlProof alongside
+         the TarlDecision. The proof is unsigned unless a signing key is
+         registered; signing is opt-in HMAC-SHA256 (a symmetric MAC, not a
+         non-repudiable signature). See utf/tarl/spec.py:TarlProof.
 """
 import datetime
 import hashlib

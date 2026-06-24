@@ -52,7 +52,18 @@ def test_thirsty_example_parses_checks_runs(path):
         f"{[d.message for d in diags]}")
 
     # Execution must not raise. The mode is taken from the module header.
-    Interpreter().interpret(ast)
+    # Governed mode is fail-closed: a governed example that exercises a gated
+    # capability needs a wired policy. If a sibling ``policy.tarl`` exists, run
+    # the example through it (governance enforced, not implied).
+    interp = Interpreter()
+    policy_path = os.path.join(os.path.dirname(path), 'policy.tarl')
+    if os.path.isfile(policy_path):
+        from utf.tarl.core import PolicyParser
+        from utf.tarl.runtime import TarlRuntime
+        with open(policy_path, encoding='utf-8') as pf:
+            policy = PolicyParser.parse(pf.read())
+        interp.attach_tarl(TarlRuntime(policy)).set_authority('example')
+    interp.interpret(ast)
 
 
 @pytest.mark.parametrize("path", TARL_EXAMPLES, ids=_rel)

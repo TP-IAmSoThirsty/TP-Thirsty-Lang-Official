@@ -70,7 +70,7 @@ class Lexer:
         handlers = {
             "(": lambda: self._add_token(TokenType.LPAREN),
             ")": lambda: self._add_token(TokenType.RPAREN),
-":": lambda: self._add_token(TokenType.COLON),
+            ":": lambda: self._handle_colon(),
             "{": lambda: self._add_token(TokenType.LBRACE),
             "}": lambda: self._add_token(TokenType.RBRACE),
             "[": lambda: self._add_token(TokenType.LBRACKET),
@@ -116,6 +116,12 @@ class Lexer:
             self._add_token(TokenType.ARROW, "->")
         else:
             self._add_token(TokenType.MINUS)
+
+    def _handle_colon(self):
+        if self._match("="):
+            self._add_token(TokenType.COLONEQ, ":=")
+        else:
+            self._add_token(TokenType.COLON)
 
     def _handle_pipe(self):
         if self._match("|"):

@@ -28,6 +28,8 @@ class TokenType(Enum):
     EMPTY = auto()
     MUT = auto()
     IN = auto()
+    LET = auto()
+    FOR = auto()
 
     # --- Module Keywords ---
     IMPORT = auto()
@@ -86,6 +88,8 @@ class TokenType(Enum):
     REQUIRES = auto()
     ENSURES = auto()
     CORE = auto()
+    STRICT = auto()
+    PURE = auto()
     MODULE = auto()
 
     # --- Literals ---
@@ -107,6 +111,7 @@ class TokenType(Enum):
     COMMA = auto()
     DOT = auto()
     COLON = auto()
+    COLONEQ = auto()    # := (define-and-assign)
     SEMICOLON = auto()
     EQ = auto()
 
@@ -164,6 +169,8 @@ KEYWORDS = {
     "empty": TokenType.EMPTY,
     "mut": TokenType.MUT,
     "in": TokenType.IN,
+    "let": TokenType.LET,
+    "for": TokenType.FOR,
     "import": TokenType.IMPORT,
     "from": TokenType.FROM,
     "as": TokenType.AS,
@@ -205,6 +212,8 @@ KEYWORDS = {
     "symbol": TokenType.SYMBOL,
     "module": TokenType.MODULE,
     "core": TokenType.CORE,
+    "strict": TokenType.STRICT,
+    "pure": TokenType.PURE,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,

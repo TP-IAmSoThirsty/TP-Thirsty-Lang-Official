@@ -71,7 +71,11 @@ program        = module_header { import_stmt } { declaration } EOF ;
 
 module_header  = "module" identifier ":" module_mode ;
 
-module_mode    = "core" | "governed" ;
+module_mode    = "core" | "governed" | "strict" | "pure" ;
+
+/* "strict": every `drink`/`let` binding must have an initializer (a bare
+   `drink x` is a runtime error). "pure": side-effecting I/O (`pour`/`sip`)
+   is rejected at runtime. */
 
 import_stmt    = "import" string [ "as" identifier ] ;
 ```
@@ -169,7 +173,11 @@ stmt           = variable_decl
                | expr_stmt
                | ";" ;
 
-variable_decl  = "drink" identifier [":" type] [ "=" expr ] ";" ;
+variable_decl  = "drink" identifier [":" type] [ "=" expr ] ";"
+               | "let" identifier [":" type] [ "=" expr ] ";"   /* immutable */
+               | identifier ":=" expr ";" ;                      /* define mutable */
+
+for_stmt       = "for" [ "(" ] identifier "in" expr [ ")" ] block ;
 
 pour_stmt      = "pour" expr ";" ;
 
@@ -311,7 +319,8 @@ tuple_pattern  = "(" [pattern { "," pattern }] ")" ;
 ## 9. Keywords
 
 ```
-drink, pour, sip, thirsty, hydrated, thirst, quench, refill, times,
+drink, let, for, strict, pure,
+pour, sip, thirsty, hydrated, thirst, quench, refill, times,
 glass, reservoir, well, of, flood, drip, evaporate, condense, fountain,
 return, parched, quenched, empty, mut, in, import, from, as,
 shield, sanitize, armor, morph, detect, defend, cascade, this, new,

@@ -189,8 +189,13 @@ class Parser:
             mode = "governed"
         elif self._match(TokenType.CORE):
             mode = "core"
+        elif self._match(TokenType.STRICT):
+            mode = "strict"
+        elif self._match(TokenType.PURE):
+            mode = "pure"
         else:
-            self._expect(TokenType.IDENTIFIER, "E901", detail="Expected mode (core/governed)")
+            self._expect(TokenType.IDENTIFIER, "E901",
+                         detail="Expected mode (core/governed/strict/pure)")
         span = self._span(name_token)
         return ModuleHeader(name=name_token.lexeme, mode=mode, span=span)
 
@@ -201,6 +206,12 @@ class Parser:
 
         if t == TokenType.DRINK:
             return self._parse_variable_decl()
+        elif t == TokenType.LET:
+            return self._parse_let_decl()
+        elif t == TokenType.FOR:
+            return self._parse_for_stmt()
+        elif t == TokenType.IDENTIFIER and self._peek_next(1).type == TokenType.COLONEQ:
+            return self._parse_walrus_decl()
         elif t == TokenType.POUR:
             return self._parse_pour_stmt()
         elif t == TokenType.SIP:
@@ -299,6 +310,54 @@ class Parser:
         self._match(TokenType.SEMICOLON)
         return VariableDecl(name=name_token.lexeme, var_type=var_type,
                             init_expr=init_expr, is_mut=is_mut, span=self._span(start))
+
+    def _parse_let_decl(self) -> VariableDecl:
+        """let name [: type] = expr — immutable binding (analogous to `drink`)."""
+        start = self._advance()  # let
+        name_token = self._expect(TokenType.IDENTIFIER, "E901",
+                                  detail="Expected variable name after 'let'")
+        var_type = None
+        if self._match(TokenType.COLON):
+            type_token = self._expect(TokenType.IDENTIFIER, "E901",
+                                      detail="Expected type after ':'")
+            var_type = type_token.lexeme
+        init_expr = None
+        if self._match(TokenType.ASSIGN):
+            init_expr = self._parse_expr()
+        elif self._match(TokenType.EQ):
+            init_expr = self._parse_expr()
+        self._match(TokenType.SEMICOLON)
+        return VariableDecl(name=name_token.lexeme, var_type=var_type,
+                            init_expr=init_expr, is_mut=False,
+                            span=self._span(start))
+
+    def _parse_walrus_decl(self) -> VariableDecl:
+        """name := expr — define-and-assign a new mutable binding."""
+        name_token = self._advance()  # identifier
+        self._advance()  # :=
+        init_expr = self._parse_expr()
+        self._match(TokenType.SEMICOLON)
+        return VariableDecl(name=name_token.lexeme, var_type=None,
+                            init_expr=init_expr, is_mut=True,
+                            span=self._span(name_token))
+
+    def _parse_for_stmt(self) -> ForStmt:
+        """for [(] x in iterable [)] { body } — keyword form of refill(x in xs)."""
+        start = self._advance()  # for
+        has_paren = self._match(TokenType.LPAREN)
+        var_token = self._expect(TokenType.IDENTIFIER, "E901",
+                                 detail="Expected loop variable after 'for'")
+        self._expect(TokenType.IN, "E901",
+                     detail="Expected 'in' after loop variable")
+        iterable = self._parse_expr()
+        if has_paren:
+            self._expect(TokenType.RPAREN, "E901",
+                         detail="Expected ')' after iterable")
+        body = self._parse_block()
+        return ForStmt(
+            variable=Identifier(name=var_token.lexeme,
+                                span=self._span(var_token)),
+            iterable=iterable, body=body, span=self._span(start))
 
     def _parse_pour_stmt(self) -> PourStmt:
         start = self._advance()
@@ -663,9 +722,19 @@ class Parser:
         while precedence < self._get_precedence():
             token = self._peek()
             op = token.type
+            # Capture the operator's precedence BEFORE advancing past it. After
+            # _advance() the current token is the right operand (precedence 0 for
+            # literals/identifiers), so reading precedence post-advance silently
+            # collapsed every operator to one right-associative level.
+            op_prec = self._get_precedence()
+            # The loop guard above is strict (`precedence < peek`), so a left-
+            # associative operator recurses at `op_prec` (the right side grabs
+            # only strictly-tighter operators; an equal-precedence operator
+            # returns here and binds to the new left). A right-associative
+            # operator recurses at `op_prec - 1` so it also grabs its equal.
             if op == TokenType.ASSIGN or op == TokenType.EQ:
                 self._advance()
-                right = self._parse_expr(self._get_precedence())
+                right = self._parse_expr(op_prec - 1)  # right-associative
                 return AssignStmt(target=prefix, value=right,
                                   span=(prefix.span[0], prefix.span[1],
                                         right.span[2], right.span[3]))
@@ -673,7 +742,7 @@ class Parser:
                 prefix = self._parse_call_suffix(prefix)
             elif op == TokenType.PIPE:
                 self._advance()
-                right = self._parse_expr(self._get_precedence())
+                right = self._parse_expr(op_prec)
                 prefix = PipeExpr(left=prefix, right=right,
                                   span=(prefix.span[0], prefix.span[1],
                                         right.span[2], right.span[3]))
@@ -683,25 +752,25 @@ class Parser:
                         TokenType.LE, TokenType.GE, TokenType.AND,
                         TokenType.OR):
                 self._advance()
-                right = self._parse_expr(self._get_precedence() + 1)
+                right = self._parse_expr(op_prec)  # left-associative
                 prefix = BinaryOp(left=prefix, op=op, right=right,
                                   span=(prefix.span[0], prefix.span[1],
                                         right.span[2], right.span[3]))
             elif op == TokenType.PIPEPIPE:
                 self._advance()
-                right = self._parse_expr(self._get_precedence() + 1)
+                right = self._parse_expr(op_prec)
                 prefix = CombineExpr(left=prefix, op="||", right=right,
                                      span=(prefix.span[0], prefix.span[1],
                                            right.span[2], right.span[3]))
             elif op == TokenType.HATHAT:
                 self._advance()
-                right = self._parse_expr(self._get_precedence() + 1)
+                right = self._parse_expr(op_prec)
                 prefix = CombineExpr(left=prefix, op="^", right=right,
                                      span=(prefix.span[0], prefix.span[1],
                                            right.span[2], right.span[3]))
             elif op == TokenType.ARROW:
                 self._advance()
-                right = self._parse_expr(self._get_precedence() + 1)
+                right = self._parse_expr(op_prec)
                 prefix = PipelineExpr(left=prefix, right=right,
                                       span=(prefix.span[0], prefix.span[1],
                                             right.span[2], right.span[3]))
@@ -761,12 +830,18 @@ class Parser:
             return self._parse_reservoir_literal()
         elif t == TokenType.MINUS:
             self._advance()
-            operand = self._parse_expr(self._get_precedence())
+            # Unary binds tighter than every binary operator: parse only the
+            # primary (with member/call suffixes), not a trailing binary chain,
+            # so -2 + 3 is (-2) + 3, not -(2 + 3).
+            operand = self._parse_expr(self.UNARY_PRECEDENCE)
             return UnaryOp(operand=operand, op=TokenType.MINUS,
                            span=self._span())
         elif t == TokenType.NOT:
             self._advance()
-            operand = self._parse_expr(self._get_precedence())
+            # Logical `not` binds looser than comparison but tighter than
+            # `and`/`or`: not a == b is not (a == b); not a and b is
+            # (not a) and b. Operand grabs everything above the `and` level.
+            operand = self._parse_expr(self.NOT_PRECEDENCE)
             return UnaryOp(operand=operand, op=TokenType.NOT,
                            span=self._span())
         elif t == TokenType.FLOOD:
@@ -861,6 +936,14 @@ class Parser:
         return GuardExpr(expr=expr, condition=condition, span=self._span(start))
 
     # === Precedence Table ===
+
+    # Binding power for prefix unary negation (-). Above multiplicative (7) so
+    # the operand is just the primary plus its member/call suffixes (DOT/LPAREN
+    # are 9, still tighter), never a trailing binary chain: -2 * 3 is (-2) * 3.
+    UNARY_PRECEDENCE = 8
+    # Binding power for logical `not`. At the `and` level (4) so the operand
+    # grabs comparisons/arithmetic (>= 5) but not `and`/`or`.
+    NOT_PRECEDENCE = 4
 
     def _get_precedence(self) -> int:
         """Return precedence of the current token (higher = binds tighter)."""

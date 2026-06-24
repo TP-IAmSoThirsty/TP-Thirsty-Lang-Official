@@ -333,7 +333,7 @@ class GovernedFunctionDecl(Stmt):
     """Governed function with a `requires` precondition.
 
     ``requires_annotation`` holds the source-text form of the precondition
-    (used by the formatter, the CLI module-info path, and checker E052).
+    (used by the formatter and the CLI module-info path).
     ``requires_expr`` holds the parsed precondition AST that the interpreter
     evaluates at call time to enforce governance.
     """
