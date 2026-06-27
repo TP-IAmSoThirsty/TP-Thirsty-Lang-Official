@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-27
+
 ### Added — Hardened-runtime acceptance bar (C022–C050)
 
 Closes the remaining critical/high threat-model challenges so the governed

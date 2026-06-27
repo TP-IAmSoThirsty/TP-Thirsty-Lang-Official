@@ -188,21 +188,27 @@ Implemented this hardening pass:
 | Suite | Purpose |
 |---|---|
 | `tests/test_threat_model_capability_broker.py` | Asserts an import-only policy grants no fs/http/net/process/env/log/test/sqlite side effect (C029–C032) |
+| `tests/test_threat_model_broker.py` | FFI/native, subprocess, and MCP/agent-tool effects must call `CapabilityBroker.require`; denied by default (C033, C040–C041) |
 | `tests/test_threat_model_file_imports.py` | Imported `.thirsty` modules run under the caller's governed gate, not a detached core interpreter (C035) |
 | `tests/test_threat_model_proof_strictness.py` | Strict verification rejects unsigned/HMAC/wrong-key/tampered proofs and missing policy source (C025) |
+| `tests/test_threat_model_replay.py` | Rejects replayed proofs by context hash, freshness window, and revoked policy hash (C023–C024) |
+| `tests/test_threat_model_authority.py` | Authority must come from a signed `AuthorityClaim`; bare `--authority`/env grants nothing in hardened mode (C027–C028) |
+| `tests/test_threat_model_context_schema.py` | Missing or type-confused context fields fail closed before rule evaluation (C045–C046) |
+| `tests/test_threat_model_audit_chain.py` | Hash-linked append-only audit; edits, deletions, and reordering break `verify_chain` (C022/C026/C049) |
+| `tests/test_threat_model_pathguard.py` | `PathGuard` confines canonical (symlink-resolved) paths; traversal/symlink escape denied (C042) |
+| `tests/test_threat_model_clock.py` | Temporal windows evaluate against signed `TrustedClock` time, not the host clock (C043) |
+| `tests/test_threat_model_failclosed.py` | Evaluator errors and failed required-audit writes surface as non-swallowable denials (C037–C038) |
+| `tests/test_threat_model_lint_quorum.py` | `lint_policy` flags broad/ungated ALLOW; `QuorumResolver` upgrades ESCALATE only on distinct signed approvals (C039/C050) |
 | `tests/test_threat_model_build_outputs.py` | Governance-dropping build targets are refused for governed source unless explicitly opted in and disclosed (C034) |
 | `tests/test_threat_model_parser_fail_closed.py` | Governed parse errors fail closed: no executable statements survive recovery (C036) |
 
-Still required (deferred):
-
-| Suite | Purpose |
-|---|---|
-| `tests/test_threat_model_proof_replay.py` | Replays old proofs, changed contexts, revoked policies, and stale windows |
-| `tests/test_threat_model_policy_downgrade.py` | Swaps policy files, removes signatures, changes versions |
-| `tests/test_threat_model_context_poisoning.py` | Supplies missing, malformed, type-confused, and attacker-controlled context |
-| `tests/test_threat_model_archive_tamper.py` | Deletes, reorders, and modifies audit records |
-| `tests/test_threat_model_agent_tools.py` | Drives AI/tool adapters through attempted direct invocation |
-| `tests/test_threat_model_resource_failure.py` | Forces exceptions, timeouts, audit write failures, and cache pressure |
+The earlier "still required" suites (proof replay, policy downgrade, context
+poisoning, archive tamper, agent tools, resource failure) were implemented under
+the consolidated filenames above: replay → `_replay.py`, downgrade →
+`_proof_strictness.py`, context poisoning → `_context_schema.py`, archive tamper
+→ `_audit_chain.py`, agent tools → `_broker.py`, resource failure →
+`_failclosed.py`. No offensive suite remains deferred; see Remaining Gaps for
+breadth/operational items.
 
 ## Current Defensive Evidence
 
