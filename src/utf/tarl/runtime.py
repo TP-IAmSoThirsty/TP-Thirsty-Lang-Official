@@ -5,8 +5,8 @@ Phase 2: register_source(name, provider) — bind a live data provider to
          source:name references in policy conditions.
 Phase 4: evaluate_with_proof() — evaluate and return a TarlProof alongside
          the TarlDecision. The proof is unsigned unless a signing key is
-         registered; signing is opt-in HMAC-SHA256 (a symmetric MAC, not a
-         non-repudiable signature). See utf/tarl/spec.py:TarlProof.
+         registered; HMAC-SHA256 is retained for compatibility, and Ed25519 is
+         available for non-repudiable asymmetric signatures.
 """
 import datetime
 import hashlib
@@ -14,6 +14,8 @@ import hmac
 import json
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from utf.tarl.core import PolicyParser, SafeExpr, _check_policy_temporal
 from utf.tarl.spec import (
@@ -38,7 +40,7 @@ class LRUCache:
 
     def __init__(self, maxsize: int = 128):
         self.maxsize = maxsize
-        self._cache = OrderedDict()
+        self._cache: OrderedDict[str, TarlDecision] = OrderedDict()
 
     def get(self, key: str) -> TarlDecision | None:
         if key in self._cache:
@@ -84,7 +86,9 @@ class TarlRuntime:
         self._throw_counts: dict = {}   # rule_index -> number of evaluation exceptions
         self._sources: dict = {}
         self._signing_keys: dict = {}   # key_id -> bytes (HMAC secrets)
+        self._ed25519_signing_keys: dict = {}  # key_id -> Ed25519PrivateKey
         self._signing_key_id: str = ""  # active key
+        self._signing_alg: str = ""     # "hmac-sha256" or "ed25519"
         self._archive = None            # TarlAuditArchive | None
 
     # ── Audit archive ─────────────────────────────────────────────────────────
@@ -109,6 +113,26 @@ class TarlRuntime:
         """
         self._signing_keys[key_id] = secret
         self._signing_key_id = key_id
+        self._signing_alg = "hmac-sha256"
+        return self
+
+    def set_ed25519_signing_key(
+        self, key_id: str, private_key: bytes | Ed25519PrivateKey
+    ) -> "TarlRuntime":
+        """
+        Register an Ed25519 private key for proof generation.
+
+        ``private_key`` may be a cryptography Ed25519PrivateKey or the raw
+        32-byte private seed accepted by Ed25519PrivateKey.from_private_bytes().
+        The most recently set key becomes the active key.
+        """
+        if isinstance(private_key, Ed25519PrivateKey):
+            key = private_key
+        else:
+            key = Ed25519PrivateKey.from_private_bytes(private_key)
+        self._ed25519_signing_keys[key_id] = key
+        self._signing_key_id = key_id
+        self._signing_alg = "ed25519"
         return self
 
     # ── Source registry ───────────────────────────────────────────────────────
@@ -314,7 +338,7 @@ class TarlRuntime:
           - SHA-256 hash of policy source
           - SHA-256 hash of canonical context
           - Per-rule trace up to (and including) the first match
-          - HMAC-SHA256 signature if a signing key is registered
+          - HMAC-SHA256 or Ed25519 signature if a signing key is registered
         """
         ctx = self._inject_sources(context)
         if policy_text is not None:
@@ -399,13 +423,19 @@ class TarlRuntime:
             signature="",
             key_id="",
         )
-        if self._signing_key_id:
+        if self._signing_key_id and self._signing_alg == "hmac-sha256":
             secret = self._signing_keys.get(self._signing_key_id)
             if secret is not None:
                 sig_hex = hmac.new(
                     secret, proof.canonical_bytes(), hashlib.sha256
                 ).hexdigest()
                 proof.signature = f"hmac-sha256:{sig_hex}"
+                proof.key_id = self._signing_key_id
+        elif self._signing_key_id and self._signing_alg == "ed25519":
+            key = self._ed25519_signing_keys.get(self._signing_key_id)
+            if key is not None:
+                sig_hex = key.sign(proof.canonical_bytes()).hex()
+                proof.signature = f"ed25519:{sig_hex}"
                 proof.key_id = self._signing_key_id
         return proof
 

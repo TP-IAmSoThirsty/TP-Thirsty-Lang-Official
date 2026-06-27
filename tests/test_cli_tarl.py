@@ -1,5 +1,7 @@
 """CLI coverage for the `tarl` policy tool."""
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from utf.tarl import cli as tarl_cli
 from utf.tarl.core import PolicyParser
@@ -43,6 +45,21 @@ def _proof_file(tmp_path):
     p = tmp_path / "proof.json"
     p.write_text(proof.to_json())
     return str(p)
+
+
+def _ed25519_proof_file(tmp_path):
+    rt = TarlRuntime(PolicyParser.parse(POLICY))
+    rt.set_ed25519_signing_key("ed1", bytes(range(32)))
+    _decision, proof = rt.evaluate_with_proof({"role": "admin"})
+    p = tmp_path / "proof-ed25519.json"
+    p.write_text(proof.to_json())
+    public_key = Ed25519PrivateKey.from_private_bytes(
+        bytes(range(32))
+    ).public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return str(p), public_key.hex()
 
 
 # --- dispatch -------------------------------------------------------------
@@ -205,6 +222,15 @@ def test_verify_with_hmac_key(monkeypatch, tmp_path):
           "--hmac-key", "k1:deadbeef")
     with pytest.raises(SystemExit):
         tarl_cli.main()
+
+
+def test_verify_with_ed25519_key(monkeypatch, tmp_path):
+    proof_file, public_hex = _ed25519_proof_file(tmp_path)
+    _argv(monkeypatch, "tarl", "verify", proof_file,
+          "--ed25519-key", f"ed1:{public_hex}")
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
 
 
 # --- analyze (z3) ---------------------------------------------------------

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from typing import Any
 
 
 class PackageManager:
@@ -18,7 +19,7 @@ class PackageManager:
         self.manifest: dict = {}
         self.lock: dict = {}
 
-    def parse_manifest(self, path: str = None) -> dict:
+    def parse_manifest(self, path: str | None = None) -> dict:
         """Parse a thirsty.toml manifest file."""
         if path:
             self.manifest_path = path
@@ -31,7 +32,7 @@ class PackageManager:
 
     def _parse_toml(self, content: str) -> dict:
         """Simple TOML parser for thirsty.toml format."""
-        result = {}
+        result: dict[str, Any] = {}
         current_section = result
 
         for line in content.split("\n"):
@@ -100,7 +101,7 @@ class PackageManager:
             pass
         return raw
 
-    def parse_lock(self, path: str = None) -> dict:
+    def parse_lock(self, path: str | None = None) -> dict:
         """Parse thirsty.lock lockfile."""
         if path:
             self.lock_path = path
@@ -111,7 +112,7 @@ class PackageManager:
         self.lock = json.loads(content) if content.strip() else {}
         return self.lock
 
-    def generate_lock(self, dependencies: dict = None) -> dict:
+    def generate_lock(self, dependencies: dict | None = None) -> dict:
         """Generate a lockfile with SHA-256 hashes."""
         if dependencies is None:
             dependencies = self.manifest.get("dependencies", {})
@@ -137,7 +138,7 @@ class PackageManager:
         content = f"{name}@{version}"
         return "sha256-" + hashlib.sha256(content.encode()).hexdigest()
 
-    def write_lock(self, path: str = None) -> bool:
+    def write_lock(self, path: str | None = None) -> bool:
         """Write the lockfile."""
         if path:
             self.lock_path = path

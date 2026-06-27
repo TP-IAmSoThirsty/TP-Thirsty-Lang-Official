@@ -8,6 +8,7 @@ version = "0.5.0"
 description = "A governance-first programming language family"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["cryptography>=41.0"]
 license = { text = "Apache-2.0" }
 authors = [
     { name = "Thirsty's Projects LLC" },
@@ -47,6 +48,11 @@ analysis = ["z3-solver>=4.12"]
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["utf.*", "utf", "thirsty_lang"]
+
+[tool.setuptools.package-data]
+# Ship the PEP 561 marker so the package's inline type hints are exposed to
+# type checkers (mypy/pyright) in downstream installs.
+utf = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

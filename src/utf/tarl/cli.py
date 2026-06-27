@@ -53,6 +53,18 @@ def main():
         help='HMAC key as key_id:hex_secret (e.g. key1:deadbeef...)',
     )
     verify_parser.add_argument(
+        '--ed25519-key', default=None, metavar='ID:HEX',
+        help='Ed25519 public key as key_id:hex_public_key',
+    )
+    verify_parser.add_argument(
+        '--require-signature', action='store_true',
+        help='Strict: reject unsigned proofs',
+    )
+    verify_parser.add_argument(
+        '--ed25519-only', action='store_true',
+        help='Strict: reject any non-Ed25519 (e.g. HMAC) signature',
+    )
+    verify_parser.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON'
     )
 
@@ -228,13 +240,25 @@ def _cmd_verify(args):
             print(f"Error reading policy: {e}", file=sys.stderr)
             sys.exit(1)
 
-    verifier = ProofVerifier()
+    verifier = ProofVerifier(
+        require_signature=getattr(args, "require_signature", False),
+        allowed_signature_algorithms=(
+            {"ed25519"} if getattr(args, "ed25519_only", False) else None
+        ),
+    )
     if args.hmac_key:
         try:
             key_id, _, hex_secret = args.hmac_key.partition(":")
             verifier.add_hmac_key(key_id, bytes.fromhex(hex_secret))
         except ValueError as e:
             print(f"Invalid --hmac-key format: {e}", file=sys.stderr)
+            sys.exit(1)
+    if args.ed25519_key:
+        try:
+            key_id, _, hex_public = args.ed25519_key.partition(":")
+            verifier.add_ed25519_key(key_id, bytes.fromhex(hex_public))
+        except ValueError as e:
+            print(f"Invalid --ed25519-key format: {e}", file=sys.stderr)
             sys.exit(1)
 
     result = verifier.verify(proof, policy_source=policy_source)

@@ -70,6 +70,7 @@ def main():
     build_parser = subparsers.add_parser("build", help="Build a .thirsty project")
     build_parser.add_argument("--target", choices=["llvm-ir", "llvm-obj", "llvm-exe", "llvm-asm", "llvm-jit", "js", "wasm-pyodide"], default="js", help="Build target")
     build_parser.add_argument("--emit-manifest", action="store_true", help="Emit governance manifest")
+    build_parser.add_argument("--allow-governance-loss", action="store_true", help="Permit building a governed module to a target that drops the governed runtime (records the loss in the manifest)")
     build_parser.add_argument("file", nargs="?", help="Entry point .thirsty file")
 
     # govern
@@ -464,6 +465,30 @@ def cmd_build(args):
     target = args.target
     base = os.path.splitext(args.file)[0]
 
+    # Governance-loss guard: every current build target (JS, LLVM, Pyodide)
+    # drops the governed runtime, so a governed module cannot enforce its
+    # policy in the emitted artifact. Refuse by default; require an explicit
+    # opt-in that is recorded in the manifest.
+    governed = bool(ast.header and ast.header.mode == "governed")
+    governance_loss = False
+    if governed:
+        if not args.allow_governance_loss:
+            print(
+                f"Error: refusing to build governed module to '{target}': "
+                "this target drops the governed runtime, losing policy "
+                "enforcement. Re-run with --allow-governance-loss "
+                "(ideally with --emit-manifest) to proceed.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        governance_loss = True
+        print(
+            f"Warning: governance loss — building governed module '{args.file}'"
+            f" to '{target}' drops the governed runtime; the emitted artifact "
+            "does NOT enforce policy.",
+            file=sys.stderr,
+        )
+
     if target.startswith("llvm-"):
         output_path = _build_llvm(ast, base, target)
         print(f"Built: {output_path}")
@@ -481,7 +506,8 @@ def cmd_build(args):
         print(f"Built: {output_path}")
 
     if args.emit_manifest:
-        _emit_manifest(ast, args.file)
+        _emit_manifest(ast, args.file, target=target,
+                       governance_loss=governance_loss)
 
 
 def _transpile_to_js(ast) -> str:
@@ -780,13 +806,17 @@ def _build_pyodide(source: str, base: str) -> str:
     return out_path
 
 
-def _emit_manifest(ast, file_path):
+def _emit_manifest(ast, file_path, target=None, governance_loss=False):
     """Emit governance manifest."""
     import json
     manifest = {
         "file": file_path,
         "mode": "core",
         "functions": [],
+        "build": {
+            "target": target,
+            "governance_loss": governance_loss,
+        },
         "governance_policy": {
             "tarl": {},
             "shadow_thirst": {},

@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Offensive threat model
+
+- Added `docs/THREAT_MODEL.md`, an offensive adversary model and challenge
+  catalog for using Thirsty-Lang as a governance AI substrate. The catalog maps
+  current proof/gate behavior to evidence and marks replay, downgrade,
+  filesystem, network, subprocess, FFI, agent-tool, archive-tamper, and context
+  poisoning defenses as required hardening work where not yet implemented.
+- Linked the threat model from `SECURITY.md`.
+
+### Added — Non-repudiable proof signatures
+
+- `TarlRuntime.set_ed25519_signing_key()` now signs `TarlProof` certificates
+  with Ed25519, and `ProofVerifier.add_ed25519_key()` verifies them with only
+  the public key. Legacy HMAC-SHA256 proof signing remains supported for
+  compatibility, but docs now distinguish symmetric MACs from non-repudiable
+  signatures.
+- `tarl verify` accepts `--ed25519-key ID:HEX_PUBLIC_KEY` for CLI verification
+  of Ed25519-signed proof JSON.
+
+### Fixed — Governed stdout bypass
+
+- The callable `print(...)` builtin now routes through the same governed-mode
+  `write/stdout` capability gate as the `pour` statement. In governed mode it
+  fails closed without policy authority and records a `TarlProof`; with an
+  attached policy that ALLOWs `action == "write"`, it executes normally.
+- Imported stdlib modules now wrap sensitive callables with capability checks
+  after import. Allowing `action == "import"` no longer implicitly grants
+  filesystem writes, network calls, process execution, environment mutation,
+  logging output, test output, or SQLite operations. The capability/action
+  table is centralized in `module_system.SENSITIVE_STDLIB_CAPABILITIES` so every
+  sensitive callable carries an explicit `read`/`write`/`network`/`execute`
+  action.
+
+### Fixed — Imported `.thirsty` modules ran ungoverned (C035)
+
+- Importing a `.thirsty` source file from a governed module now executes it
+  under the **caller's** governed runtime (policy engine + authority), instead
+  of a detached core-mode interpreter. An imported module's top-level effects
+  are gated during import, and the function closures it exports are gated when
+  later called from governed code. A denial during import surfaces as a
+  `GovernanceViolation` and is not swallowed into `spillage`.
+
+### Fixed — Governed parse errors no longer smuggle statements (C036)
+
+- A `governed` module with any parse error now fails closed: the parser
+  discards all recovered statements and the interpreter refuses to run the
+  program, raising a `GovernanceViolation` with a DENY proof. Non-governed
+  modules keep error recovery. (Member access after `.` also now accepts
+  keyword-like member names such as `log.error`.)
+
+### Added — Strict, opt-in proof verification (C025)
+
+- `ProofVerifier(require_signature=…, allowed_signature_algorithms=…,
+  require_policy_source=…)` can reject unsigned proofs, restrict the accepted
+  signature family (e.g. Ed25519-only, rejecting HMAC), and require a policy
+  source for hash binding. Defaults are unchanged (permissive). `tarl verify`
+  gains `--require-signature` and `--ed25519-only`.
+
+### Added — Governed build artifacts must declare governance loss (C034)
+
+- `thirsty build` refuses to emit a governance-dropping target (`js`, `llvm-*`,
+  `wasm-pyodide`) for a `governed` module by default. `--allow-governance-loss`
+  is required to proceed; it warns on stderr and records
+  `build.governance_loss = true` in the emitted manifest.
+
+### Fixed — `->` pipeline operator crashed at runtime
+
+- `Interpreter._evaluate_pipeline` walked a non-existent `.steps` attribute on
+  the binary `PipelineExpr` node (which has `left`/`right`), so any `->`
+  expression raised `AttributeError`. It now feeds the left value into the right
+  operand (same semantics as the `|` pipe). Added a regression test.
+
+### Changed — Type hygiene and PEP 561
+
+- The package now ships a `py.typed` marker and is clean under `mypy` from
+  source (0 errors across 40 modules). Fixes include: removing the
+  `_z3 = None`/`import z3` type-confusion in `analyzer.py` and
+  `convergence.py`, replacing `callable` used as a type annotation with
+  `Callable[..., Any]`, eliminating implicit-`Optional` defaults, and adding
+  missing container annotations. Behavior is unchanged.
+
+### Fixed — Z3 analysis heap corruption under concurrency
+
+- The LSP runs coverage/shadow analysis in a daemon thread while the main
+  thread also drives z3, whose Python bindings share a single, non-thread-safe
+  global context. Cyclic GC could call `Z3_dec_ref` from a thread other than
+  the one using the solver, corrupting the z3 heap (a Windows `0xC0000374` /
+  access-violation crash in `Z3_model_dec_ref`). `PolicyAnalyzer` now serializes
+  every z3 entry point through a process-wide lock and collects z3 garbage
+  inside that lock, so all z3 reference-counting happens on one thread.
+
 ---
 
 ## [0.5.0] - 2026-06-24

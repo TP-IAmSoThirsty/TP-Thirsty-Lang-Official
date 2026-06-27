@@ -48,8 +48,12 @@ class TarlVerdict(StrEnum):
         return a if _VERDICT_RANK[a] <= _VERDICT_RANK[b] else b
 
     @staticmethod
-    def join(a: TarlVerdict, b: TarlVerdict) -> TarlVerdict:
-        """Permissive composition (∨): max in safety ordering."""
+    def join(a: TarlVerdict, b: TarlVerdict) -> TarlVerdict:  # type: ignore[override]
+        """Permissive composition (∨): max in safety ordering.
+
+        Intentionally shadows ``str.join`` (this enum subclasses ``str``); it is
+        the lattice join over verdicts, not string concatenation.
+        """
         return a if _VERDICT_RANK[a] >= _VERDICT_RANK[b] else b
 
 
@@ -238,13 +242,13 @@ class TarlProof:
       k    — matched rule index (-1 = DEFAULT_DENY)
       v    — final verdict
       T    — evaluation trace: [{rule_index, condition, matched}, ...]
-      σ    — optional HMAC-SHA256 tag over the canonical encoding
+      σ    — optional HMAC-SHA256 tag or Ed25519 signature over the canonical
+             encoding
 
-    σ is **unsigned by default** and, when present, is a *symmetric* MAC
-    (HMAC-SHA256): it is forgeable by any party that holds the key, including
-    the verifier. It is NOT a non-repudiable (asymmetric) signature; no Ed25519
-    path is implemented. Use the proof as an integrity/audit record, not as
-    cryptographic attestation of authorship.
+    Proofs are **unsigned by default**. HMAC-SHA256 remains available as a
+    symmetric compatibility mode: it is forgeable by any party that holds the
+    key, including a verifier. Use Ed25519 for non-repudiable asymmetric proof
+    signatures where the verifier has only the public key.
     """
     policy_hash: str          # "sha256:<hex>"
     context_hash: str         # "sha256:<hex>"
@@ -253,7 +257,7 @@ class TarlProof:
     verdict: TarlVerdict
     evaluated_at: str         # ISO-8601 UTC
     trace: list[dict]         # [{rule_index, condition, matched}, ...]
-    signature: str            # "hmac-sha256:<hex>" or ""
+    signature: str            # "hmac-sha256:<hex>", "ed25519:<hex>", or ""
     key_id: str               # signing key identifier or ""
 
     def canonical_bytes(self) -> bytes:

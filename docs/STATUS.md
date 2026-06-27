@@ -37,10 +37,17 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | `invariant` checked at entry **and** exit | Real | `tests/test_governance_maximal.py::TestContracts::test_invariant_entry_and_exit` |
 | Contracts on methods (design-by-contract, any mode) | Real | `tests/test_governance_maximal.py::TestContracts::test_method_contract_any_mode` |
 | Capability gates: imports + I/O routed through TARL, deny-by-default | Real | `tests/test_governance_maximal.py::TestCapabilityGates` |
-| Denials carry a signed `TarlProof` | Real | `tests/test_governance_maximal.py::TestCapabilityGates::test_write_denied_with_proof` |
+| Sensitive imported stdlib calls require their own capability verdict after import | Real | `tests/test_gate_fail_closed.py::test_import_allow_does_not_grant_sensitive_stdlib_calls` |
+| Denials carry a `TarlProof`; proofs are unsigned unless runtime signing is configured | Real | `tests/test_governance_maximal.py::TestCapabilityGates::test_write_denied_with_proof`; `tests/test_gate_fail_closed.py` |
 | Temporal windows govern a call (allow/deny) | Real | `tests/test_governance_maximal.py::TestTemporal` |
 | Static E053 for a governed call from `core` mode | Real | `tests/test_governance_maximal.py::TestStatic::test_e053_governed_call_from_core` |
 | Forward-reference / mutual-recursion hoisting | Real | `tests/test_governance_maximal.py::TestStatic::test_forward_reference_resolves` |
+| Offensive threat model and challenge catalog | Real | `docs/THREAT_MODEL.md` |
+| Imported `.thirsty` modules run under the caller's governed gate (not detached core) | Real | `tests/test_threat_model_file_imports.py` |
+| Governed module with a parse error fails closed (no statements execute) | Real | `tests/test_threat_model_parser_fail_closed.py` |
+| Strict, opt-in proof verification (require signature / Ed25519-only / require policy source) | Real | `tests/test_threat_model_proof_strictness.py` |
+| Governed build refuses governance-dropping targets unless explicitly disclosed | Real | `tests/test_threat_model_build_outputs.py` |
+| Import-only policy grants no sensitive stdlib side effect | Real | `tests/test_threat_model_capability_broker.py` |
 
 ## Semantic verifiers
 
@@ -60,6 +67,7 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 |---|---|---|
 | Policy parsing, first-match-wins evaluation, verdicts | Real | `tests/test_tarl.py` |
 | HMAC-signed proof certificates | Real | `tests/test_tarl_proof.py` |
+| Ed25519-signed proof certificates | Real | `tests/test_tarl_proof.py` |
 | Temporal windows (`valid_from`/`valid_until`, durations) | Real | `tests/test_tarl_temporal.py` |
 | Policy composition | Real | `tests/test_tarl_composition.py` |
 | Z3 static analysis (coverage / shadows / conflicts / equiv / refines) | Real (opt) | `tests/test_tarl_analyzer.py` |

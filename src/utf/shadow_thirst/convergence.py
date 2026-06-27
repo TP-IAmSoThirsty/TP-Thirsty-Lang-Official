@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import dataclass
+from typing import Any
 
 from utf.thirsty_lang.ast import (
     AssignStmt,
@@ -51,13 +52,16 @@ from utf.thirsty_lang.token import TokenType
 
 # ── Z3 availability (mirrors utf.tarl.analyzer) ───────────────────────────────
 
-_z3 = None
-_Z3_AVAILABLE = False
+# z3-solver ships no type stubs; annotate the handle ``Any`` and import first so
+# the success path types as Any (no "None has no attribute …" storm), falling
+# back to None when the optional extra is absent.
+_z3: Any
 try:
-    import z3 as _z3  # type: ignore[import]
+    import z3 as _z3  # type: ignore[no-redef,import-untyped,import-not-found]
     _Z3_AVAILABLE = True
-except ImportError:
-    pass
+except ImportError:  # pragma: no cover - exercised only without the extra
+    _z3 = None
+    _Z3_AVAILABLE = False
 
 
 @dataclass

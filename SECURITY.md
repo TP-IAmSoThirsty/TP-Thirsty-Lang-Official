@@ -57,6 +57,14 @@ The following components have security implications and receive priority attenti
 - **Iron Path**: Sovereign execution with cryptographic audit trails
 - **PSIA Pipeline**: 7-stage security preprocessing pipeline
 
+## Offensive Threat Model
+
+The adversary model and challenge catalog are maintained in
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md). Security claims should map to a
+challenge ID, a passing test, or a roadmap gap. In hardened use, a missing
+policy, missing authority, missing proof, failed signature verification, stale
+proof, or unavailable audit sink must fail closed.
+
 ## Default DENY
 
 Thirsty-Lang's core security principle: **Default DENY at every governance gate.** Every tier enforces a default-deny posture — code cannot execute, data cannot flow, and mutations cannot commit unless explicitly authorized.

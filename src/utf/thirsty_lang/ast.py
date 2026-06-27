@@ -365,6 +365,9 @@ class Program:
     stmts: list
     header: ModuleHeader | None = None
     span: tuple = (0, 0, 0, 0)
+    # Set when a governed module had parse errors: the parser discards all
+    # recovered statements (fail-closed) and the interpreter refuses to run it.
+    parse_failed: bool = False
 
 
 # === Shadow Thirst Nodes ===
@@ -373,9 +376,9 @@ class Program:
 class ShadowThirstMutation(Stmt):
     """mutation name { validated_canonical { shadow { ... } invariant { ... } canonical { ... } } }"""
     name: str
-    shadow_block: Stmt | None = None
-    invariant_block: Stmt | None = None
-    canonical_block: Stmt | None = None
+    shadow_block: 'BlockStmt | None' = None
+    invariant_block: 'BlockStmt | None' = None
+    canonical_block: 'BlockStmt | None' = None
 
 
 # Type alias for any AST node

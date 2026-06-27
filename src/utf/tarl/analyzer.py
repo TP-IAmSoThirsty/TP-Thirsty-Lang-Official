@@ -11,22 +11,64 @@ Z3 SMT-backed analysis (optional: pip install thirsty-lang[analysis])
 """
 from __future__ import annotations
 
+import functools
+import gc
+import threading
 from dataclasses import dataclass, field
+from typing import Any
 
 from utf.tarl.core import PolicyParser, SafeExpr
 from utf.tarl.spec import TarlPolicy, TarlRule, TarlVerdict
 
 # ── Z3 availability ───────────────────────────────────────────────────────────
 
-_z3 = None
-_Z3_AVAILABLE = False
+# z3-solver ships no type stubs; the handle is annotated ``Any`` so the optional
+# dependency does not produce a storm of "None has no attribute …" errors at
+# every ``_z3.<symbol>`` use site. Import first (so the success path types as
+# Any), falling back to None when the extra is not installed.
+_z3: Any
 try:
-    import z3 as _z3  # type: ignore[import]
+    import z3 as _z3  # type: ignore[no-redef,import-untyped,import-not-found]
     _Z3_AVAILABLE = True
-except ImportError:
-    pass
+except ImportError:  # pragma: no cover - exercised only without the extra
+    _z3 = None
+    _Z3_AVAILABLE = False
 
 _Z3_MSG = "static analysis requires z3-solver: pip install thirsty-lang[analysis]"
+
+
+# ── Z3 thread-safety guard ────────────────────────────────────────────────────
+#
+# z3-solver's Python bindings share a single global context (z3.main_ctx()) whose
+# reference counting is NOT thread-safe. The LSP runs coverage/shadow analysis in
+# a daemon thread (see utf/tarl/lsp.py:_publish_diagnostics) while the main thread
+# also drives z3, and z3 AST/model objects reaped by Python's cyclic garbage
+# collector can call Z3_dec_ref from a thread other than the one using the solver.
+# Concurrent deref against the shared context corrupts the z3 heap — observed as a
+# Windows 0xC0000374 fatal exception / access violation inside Z3_model_dec_ref.
+#
+# _z3_serialized() confines every z3 entry point to a process-wide lock and forces
+# gc.collect() *inside* the lock, after the wrapped frame's z3 locals are gone, so
+# every Z3_dec_ref (immediate or deferred/cyclic) runs on a single thread with no
+# concurrent context access. Results are plain dataclasses holding no z3 refs.
+_Z3_LOCK = threading.RLock()
+
+
+def _z3_serialized(fn):
+    """Serialize z3 global-context access and collect z3 garbage under the lock."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not _Z3_AVAILABLE:
+            return fn(*args, **kwargs)
+        with _Z3_LOCK:
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                # The wrapped frame has returned, so its z3 locals are already
+                # unreferenced; collect any cyclic z3 garbage here, on this
+                # thread, before another thread can touch the global context.
+                gc.collect()
+    return wrapper
 
 # Verdict integer encoding for ITE chains
 _VERDICT_INT = {
@@ -51,7 +93,7 @@ _TEMPORAL_STR_BUILTINS = frozenset({"CURRENT_WEEKDAY", "CURRENT_TIMESTAMP"})
 class CoverageGap:
     """A context region where all rules fail and DEFAULT-DENY applies."""
     description: str = ""
-    example_context: dict | None = None
+    example_context: dict[str, Any] | None = None
 
 
 @dataclass
@@ -71,7 +113,7 @@ class ConflictPair:
     rule_j: int = 0
     verdict_i: TarlVerdict = TarlVerdict.DENY
     verdict_j: TarlVerdict = TarlVerdict.DENY
-    example_context: dict | None = None
+    example_context: dict[str, Any] | None = None
     description: str = ""
 
 
@@ -85,7 +127,7 @@ class AnalysisResult:
     gaps: list[CoverageGap] = field(default_factory=list)
     shadows: list[ShadowedRule] = field(default_factory=list)
     conflicts: list[ConflictPair] = field(default_factory=list)
-    counterexample: dict | None = None
+    counterexample: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         if not self.available:
@@ -218,14 +260,14 @@ class _ConditionToZ3:
             return None
         t = node[0]
         if t == "ident":
-            return node[1]
+            return str(node[1])
         if t == "attr":
             return ".".join(node[1])
         return None
 
     # ── variable creation ─────────────────────────────────────────────────────
 
-    def _get_var(self, key: str) -> object:
+    def _get_var(self, key: str) -> Any:
         if key in self._vars:
             return self._vars[key]
         if key in _TEMPORAL_INT_DOMAINS:
@@ -255,17 +297,17 @@ class _ConditionToZ3:
         self._vars[key] = v
         return v
 
-    def _fresh(self, hint: str = "") -> object:
+    def _fresh(self, hint: str = "") -> Any:
         name = f"_op{self._opaque_n}" + (f"_{hint[:16]}" if hint else "")
         self._opaque_n += 1
         return _z3.Bool(name)
 
-    def domain_constraints(self) -> list:
+    def domain_constraints(self) -> list[Any]:
         return list(self._domain)
 
     # ── translation ───────────────────────────────────────────────────────────
 
-    def to_bool(self, node: object) -> object:
+    def to_bool(self, node: object) -> Any:
         if not isinstance(node, tuple):
             return _z3.BoolVal(bool(node))
         tag = node[0]
@@ -292,7 +334,7 @@ class _ConditionToZ3:
             return self._fresh(f"ident_{k}")
         return self._fresh(tag)
 
-    def to_val(self, node: object) -> object | None:
+    def to_val(self, node: object) -> Any:
         if not isinstance(node, tuple):
             return None
         tag = node[0]
@@ -321,7 +363,7 @@ class _ConditionToZ3:
             return self._arith(node[1], node[2], _arith_ops[tag])
         return None
 
-    def _arith(self, left: object, right: object, op: str) -> object | None:
+    def _arith(self, left: object, right: object, op: str) -> Any:
         lv, rv = self.to_val(left), self.to_val(right)
         if lv is None or rv is None:
             return None
@@ -338,7 +380,7 @@ class _ConditionToZ3:
             return None
 
     @staticmethod
-    def _coerce(lv: object, rv: object) -> tuple:
+    def _coerce(lv: Any, rv: Any) -> tuple[Any, Any]:
         try:
             if lv.sort() == _z3.IntSort() and rv.sort() == _z3.RealSort():
                 return _z3.ToReal(lv), rv
@@ -348,7 +390,7 @@ class _ConditionToZ3:
             pass
         return lv, rv
 
-    def _cmp(self, node: tuple) -> object:
+    def _cmp(self, node: tuple[Any, ...]) -> Any:
         op, lv, rv = node[1], self.to_val(node[2]), self.to_val(node[3])
         if lv is None or rv is None:
             return self._fresh(f"cmp_{op}")
@@ -367,7 +409,7 @@ class _ConditionToZ3:
 
     def _membership(
         self, val_node: object, col_node: object, negate: bool
-    ) -> object:
+    ) -> Any:
         if not isinstance(col_node, tuple):
             return self._fresh("in")
         if col_node[0] == "set":
@@ -393,7 +435,7 @@ class _ConditionToZ3:
 
 # ── Module helpers ────────────────────────────────────────────────────────────
 
-def _build_formulas(tr: _ConditionToZ3, rules: list[TarlRule]) -> list:
+def _build_formulas(tr: _ConditionToZ3, rules: list[TarlRule]) -> list[Any]:
     out = []
     for rule in rules:
         try:
@@ -405,7 +447,7 @@ def _build_formulas(tr: _ConditionToZ3, rules: list[TarlRule]) -> list:
     return out
 
 
-def _verdict_ite(formulas: list, rules: list[TarlRule]) -> object:
+def _verdict_ite(formulas: list[Any], rules: list[TarlRule]) -> Any:
     """First-match-wins ITE chain: DENY=0, ESCALATE=1, ALLOW=2."""
     result = _z3.IntVal(0)  # DEFAULT-DENY
     for i in range(len(formulas) - 1, -1, -1):
@@ -417,9 +459,9 @@ def _verdict_ite(formulas: list, rules: list[TarlRule]) -> object:
     return result
 
 
-def _model_dict(model: object, tr: _ConditionToZ3) -> dict:
+def _model_dict(model: Any, tr: _ConditionToZ3) -> dict[str, Any]:
     """Extract variable assignments from a Z3 satisfying model."""
-    ctx: dict = {}
+    ctx: dict[str, Any] = {}
     for key, var in tr._vars.items():
         try:
             val = model.eval(var, model_completion=True)
@@ -459,6 +501,7 @@ class PolicyAnalyzer:
 
     # ── coverage ──────────────────────────────────────────────────────────────
 
+    @_z3_serialized
     def check_coverage(self) -> AnalysisResult:
         """
         Gap(P) = SAT(¬φ₁ ∧ ... ∧ ¬φₙ)
@@ -500,6 +543,7 @@ class PolicyAnalyzer:
 
     # ── shadows ───────────────────────────────────────────────────────────────
 
+    @_z3_serialized
     def check_shadows(self) -> AnalysisResult:
         """
         Reachable(rₖ) = SAT(¬φ₁ ∧ ... ∧ ¬φₖ₋₁ ∧ φₖ)
@@ -546,6 +590,7 @@ class PolicyAnalyzer:
 
     # ── conflicts ─────────────────────────────────────────────────────────────
 
+    @_z3_serialized
     def check_conflicts(self) -> AnalysisResult:
         """
         Conflict(rᵢ, rⱼ) = SAT(φᵢ ∧ φⱼ) where vᵢ ≠ vⱼ
@@ -592,6 +637,7 @@ class PolicyAnalyzer:
     # ── equiv ─────────────────────────────────────────────────────────────────
 
     @staticmethod
+    @_z3_serialized
     def check_equiv(p1: TarlPolicy, p2: TarlPolicy) -> AnalysisResult:
         """
         SAT(V(P₁,c) ≠ V(P₂,c)) — not equivalent if satisfiable.
@@ -628,6 +674,7 @@ class PolicyAnalyzer:
     # ── refines ───────────────────────────────────────────────────────────────
 
     @staticmethod
+    @_z3_serialized
     def check_refines(strict: TarlPolicy, permissive: TarlPolicy) -> AnalysisResult:
         """
         strict ⊑ permissive iff SAT(strict_allows ∧ ¬permissive_allows) is UNSAT.

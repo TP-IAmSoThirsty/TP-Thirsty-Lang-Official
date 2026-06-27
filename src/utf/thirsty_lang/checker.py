@@ -103,7 +103,7 @@ def _nearest_match(name: str, candidates: list[str], max_dist: int = 3) -> list[
 class Scope:
     """A lexical scope with variable bindings and type information."""
 
-    def __init__(self, parent: 'Scope' = None):
+    def __init__(self, parent: "Scope | None" = None):
         self.parent = parent
         self.bindings: dict[str, dict] = {}  # name -> {type, is_mut, kind}
 

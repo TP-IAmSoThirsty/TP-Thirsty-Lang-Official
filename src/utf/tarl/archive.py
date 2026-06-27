@@ -103,7 +103,9 @@ class TarlAuditArchive:
                 ),
             )
             conn.commit()
-            return cursor.lastrowid
+            # lastrowid is the new AUTOINCREMENT id after a successful INSERT;
+            # it is only None if no row was inserted (never on this path).
+            return cursor.lastrowid or 0
 
     # ── Read ──────────────────────────────────────────────────────────────────
 

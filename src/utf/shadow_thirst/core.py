@@ -746,7 +746,7 @@ class PromotionEngine:
         return verdict, results
 
     @staticmethod
-    def generate_mermaid(module: ShadowModule, verdict: str = "PROMOTE", results: list[AnalysisResult] = None) -> str:
+    def generate_mermaid(module: ShadowModule, verdict: str = "PROMOTE", results: list[AnalysisResult] | None = None) -> str:
         if results is None:
             results = []
         """Generate a Mermaid flowchart visualization of the promotion flow."""

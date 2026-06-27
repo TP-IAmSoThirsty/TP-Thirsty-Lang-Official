@@ -21,7 +21,7 @@ Phase 2 — PolicyParser supports:
 """
 import datetime
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from utf.tarl.spec import (
     DEFAULT_DENY,
@@ -374,25 +374,25 @@ class PolicyParser:
             # String literals
             elif c == '"':
                 i += 1
-                s = []
+                chars = []
                 while i < n and expr[i] != '"':
                     if expr[i] == "\\" and i + 1 < n:
                         i += 1
-                        s.append({"n": "\n", "t": "\t", "\\": "\\",
-                                  '"': '"'}.get(expr[i], expr[i]))
+                        chars.append({"n": "\n", "t": "\t", "\\": "\\",
+                                      '"': '"'}.get(expr[i], expr[i]))
                     else:
-                        s.append(expr[i])
+                        chars.append(expr[i])
                     i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, "".join(s), i))
+                tokens.append(ExprToken(STRING, "".join(chars), i))
             elif c == "'":
                 i += 1
-                s = []
+                chars = []
                 while i < n and expr[i] != "'":
-                    s.append(expr[i])
+                    chars.append(expr[i])
                     i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, "".join(s), i))
+                tokens.append(ExprToken(STRING, "".join(chars), i))
 
             # Number literals
             elif c.isdigit():
@@ -820,7 +820,7 @@ class SafeExpr:
 
         # Dot-access: walk nested dicts
         if tag == "attr":
-            val = context
+            val: Any = context
             for part in node[1]:
                 if isinstance(val, dict):
                     val = val.get(part)
@@ -974,7 +974,7 @@ class SafeExpr:
 def evaluate_policy(
     context: dict,
     policy_text: str = "",
-    policy: TarlPolicy = None,
+    policy: TarlPolicy | None = None,
 ) -> TarlDecision:
     """
     Evaluate a policy against a context dict.

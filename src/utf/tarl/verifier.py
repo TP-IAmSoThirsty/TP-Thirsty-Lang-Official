@@ -2,7 +2,7 @@
 T.A.R.L. Proof Verifier — Phase 4
 
 Independent verification of TarlProof certificates:
-  1. Signature validity (HMAC-SHA256)
+  1. Signature validity (HMAC-SHA256 or Ed25519)
   2. Policy hash match (optional, requires policy source)
   3. Evaluation trace internal consistency
 
@@ -13,6 +13,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass, field
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from utf.tarl.spec import TarlProof
 
@@ -50,16 +53,52 @@ class ProofVerifier:
 
         verifier = ProofVerifier()
         verifier.add_hmac_key("key1", b"my-secret")
+        verifier.add_ed25519_key("key2", ed25519_public_key)
         result = verifier.verify(proof, policy_source=policy_text)
         assert result.valid
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        require_signature: bool = False,
+        allowed_signature_algorithms: set[str] | None = None,
+        require_policy_source: bool = False,
+    ) -> None:
+        """
+        Strict-mode options (all default to today's permissive behavior):
+
+          require_signature             — an unsigned proof is INVALID.
+          allowed_signature_algorithms  — restrict accepted signature families
+                                          (e.g. {"ed25519"} rejects HMAC proofs).
+                                          Compared against the algorithm family
+                                          (``hmac`` / ``ed25519``).
+          require_policy_source         — verification without a policy_source to
+                                          bind policy_hash against is INVALID.
+        """
         self._hmac_keys: dict[str, bytes] = {}
+        self._ed25519_keys: dict[str, Ed25519PublicKey] = {}
+        self.require_signature = require_signature
+        self.allowed_signature_algorithms = (
+            {a.lower() for a in allowed_signature_algorithms}
+            if allowed_signature_algorithms is not None
+            else None
+        )
+        self.require_policy_source = require_policy_source
 
     def add_hmac_key(self, key_id: str, secret: bytes) -> ProofVerifier:
         """Register an HMAC-SHA256 key for signature verification."""
         self._hmac_keys[key_id] = secret
+        return self
+
+    def add_ed25519_key(
+        self, key_id: str, public_key: bytes | Ed25519PublicKey
+    ) -> ProofVerifier:
+        """Register an Ed25519 public key for signature verification."""
+        if isinstance(public_key, Ed25519PublicKey):
+            key = public_key
+        else:
+            key = Ed25519PublicKey.from_public_bytes(public_key)
+        self._ed25519_keys[key_id] = key
         return self
 
     def verify(
@@ -71,7 +110,7 @@ class ProofVerifier:
         Verify a TarlProof.
 
         Checks performed:
-          signature    — HMAC-SHA256 valid (or None if unsigned)
+          signature    — HMAC-SHA256 or Ed25519 valid (or None if unsigned)
           policy_hash  — matches provided policy_source (or None if not given)
           trace        — internal consistency (k is first True in T, verdict correct)
 
@@ -85,11 +124,18 @@ class ProofVerifier:
 
         # ── 1. Signature ──────────────────────────────────────────────────────
         sig_result = self._check_signature(proof)
+        if self.require_signature and sig_result is None:
+            # Strict mode: an unsigned proof is not acceptable.
+            sig_result = False
         checks["signature"] = sig_result
         if sig_result is True:
             messages.append("signature valid")
         elif sig_result is False:
-            messages.append("signature INVALID")
+            messages.append(
+                "signature INVALID"
+                if proof.signature or not self.require_signature
+                else "signature REQUIRED but proof is unsigned"
+            )
         else:
             messages.append("signature skipped (unsigned)")
 
@@ -100,6 +146,10 @@ class ProofVerifier:
             messages.append(
                 "policy hash valid" if ph_ok else "policy hash MISMATCH"
             )
+        elif self.require_policy_source:
+            # Strict mode: cannot certify policy binding without the source.
+            checks["policy_hash"] = False
+            messages.append("policy source REQUIRED but not provided")
         else:
             checks["policy_hash"] = None
 
@@ -135,6 +185,13 @@ class ProofVerifier:
         if not sep:
             return False
 
+        # Strict mode: reject signature families outside the allow-list (e.g.
+        # an HMAC proof presented to an Ed25519-only verifier).
+        if self.allowed_signature_algorithms is not None:
+            family = alg.split("-", 1)[0].lower()
+            if family not in self.allowed_signature_algorithms:
+                return False
+
         if alg == "hmac-sha256":
             secret = self._hmac_keys.get(proof.key_id)
             if secret is None:
@@ -143,6 +200,18 @@ class ProofVerifier:
                 secret, proof.canonical_bytes(), hashlib.sha256
             ).hexdigest()
             return hmac.compare_digest(expected, sig_hex)
+
+        if alg == "ed25519":
+            public_key = self._ed25519_keys.get(proof.key_id)
+            if public_key is None:
+                return False
+            try:
+                public_key.verify(
+                    bytes.fromhex(sig_hex), proof.canonical_bytes()
+                )
+                return True
+            except (ValueError, InvalidSignature):
+                return False
 
         return False  # unknown algorithm
 
