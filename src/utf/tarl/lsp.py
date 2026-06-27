@@ -46,7 +46,8 @@ def _read_message(stream) -> dict | None:
     if not length:
         return None
     body = stream.read(length).decode("utf-8")
-    return json.loads(body)
+    message = json.loads(body)
+    return message if isinstance(message, dict) else None
 
 
 def _write_message(stream, msg: dict) -> None:

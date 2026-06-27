@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 # Safety ordering: DENY=0 < ESCALATE=1 < ALLOW=2
-_VERDICT_RANK: dict = {}
+_VERDICT_RANK: dict[TarlVerdict, int] = {}
 
 
 class TarlVerdict(StrEnum):

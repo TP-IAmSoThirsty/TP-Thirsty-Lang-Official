@@ -107,8 +107,18 @@ ignore = ["E501"]  # line too long (handled by black)
 
 [tool.mypy]
 python_version = "3.11"
+# src-layout: tell mypy where the package root is so `mypy -p utf` resolves the
+# in-tree source (not a stale install) with no ad-hoc command-line flags.
+mypy_path = "src"
+explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
+
+# z3-solver is an optional extra ([analysis]) and ships no type stubs; treat it
+# as untyped here so the canonical run needs no global --ignore-missing-imports.
+[[tool.mypy.overrides]]
+module = ["z3.*"]
+ignore_missing_imports = true

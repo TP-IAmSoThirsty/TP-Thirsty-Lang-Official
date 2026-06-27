@@ -132,7 +132,7 @@ class FunctionType(Type):
 
 # === Type String Map ===
 
-TYPE_NAME_MAP = {
+TYPE_NAME_MAP: "dict[str, type[Type]]" = {
     "Int": IntType,
     "Float": FloatType,
     "Bool": BoolType,

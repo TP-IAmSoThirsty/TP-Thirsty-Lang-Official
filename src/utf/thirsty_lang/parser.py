@@ -970,7 +970,7 @@ class Parser:
         token = self._peek()
         return self._precedence_map().get(token.type, 0)
 
-    def _precedence_map(self) -> dict:
+    def _precedence_map(self) -> dict[TokenType, int]:
         return {
             TokenType.ASSIGN: 1,
             TokenType.EQ: 1,

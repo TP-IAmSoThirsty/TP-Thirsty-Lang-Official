@@ -185,7 +185,7 @@ class TarlAuditArchive:
             row = conn.execute(
                 f"SELECT COUNT(*) FROM proofs {where}", params
             ).fetchone()
-        return row[0] if row else 0
+        return int(row[0]) if row else 0
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

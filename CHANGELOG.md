@@ -81,12 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — Type hygiene and PEP 561
 
-- The package now ships a `py.typed` marker and is clean under `mypy` from
-  source (0 errors across 40 modules). Fixes include: removing the
-  `_z3 = None`/`import z3` type-confusion in `analyzer.py` and
-  `convergence.py`, replacing `callable` used as a type annotation with
-  `Callable[..., Any]`, eliminating implicit-`Optional` defaults, and adding
-  missing container annotations. Behavior is unchanged.
+- The package now ships a `py.typed` marker and is clean under `mypy`. The
+  canonical, flag-free invocation is `mypy -p utf` (configured via `mypy_path`
+  + `explicit_package_bases` in `[tool.mypy]`, with a `z3.*` override for the
+  optional, stub-less `analysis` extra): **0 errors across 42 modules**.
+- Fixes include: removing the `_z3 = None`/`import z3` type-confusion in
+  `analyzer.py` and `convergence.py`; replacing `callable` used as a type
+  annotation with `Callable[..., Any]`; eliminating implicit-`Optional`
+  defaults; giving the parser's expression methods proper AST return types;
+  annotating containers (`_VERDICT_RANK`, `TYPE_NAME_MAP`, token lists, scope
+  walkers); and coercing `Any`-typed returns (`json.loads`, sqlite rows) at
+  trust boundaries. Behavior is unchanged.
 
 ### Fixed — Z3 analysis heap corruption under concurrency
 

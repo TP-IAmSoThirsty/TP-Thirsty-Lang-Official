@@ -146,7 +146,7 @@ class PolicyParser:
         Returns a list of TarlPolicy and TarlPolicySet objects.
         Bare rules (no policy header) accumulate into an 'unnamed' policy.
         """
-        results = []
+        results: list[Any] = []
         current_policy: TarlPolicy | None = None
         current_set: TarlPolicySet | None = None
 
@@ -602,7 +602,7 @@ class SafeExpr:
             raise cls.ParseError(f"Unexpected token: {parser.current()}")
         return bool(cls._eval_node(result, context))
 
-    def __init__(self, tokens: list):
+    def __init__(self, tokens: list[ExprToken]):
         self.tokens = tokens
         self.pos = 0
 

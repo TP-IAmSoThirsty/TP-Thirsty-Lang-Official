@@ -14,6 +14,7 @@ import dataclasses
 import hashlib
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from utf.thirsty_lang.ast import (
     ArrayLiteral,
@@ -112,7 +113,7 @@ def _structural_signature(node, namemap):
     if isinstance(node, NoneLiteral):
         return ("NoneLiteral",)
     if isinstance(node, (Expr, Stmt)):
-        parts = [type(node).__name__]
+        parts: list[Any] = [type(node).__name__]
         for f in dataclasses.fields(node):
             if f.name == "span":
                 continue
@@ -704,7 +705,7 @@ class PromotionEngine:
     """Executes the promote/reject flow based on analyzer results."""
 
     def __init__(self):
-        self.analyzers = [
+        self.analyzers: list[tuple[str, Any]] = [
             ("PlaneIsolation", PlaneIsolationAnalyzer()),
             ("Determinism", DeterminismAnalyzer()),
             ("ResourceEstimation", ResourceEstimator()),

@@ -629,7 +629,7 @@ class _LLVMExpr:
         if isinstance(expr, BoolLiteral):
             return "1" if expr.value else "0"
         if isinstance(expr, Identifier):
-            return env.get(expr.name, "0")
+            return str(env.get(expr.name, "0"))
         if isinstance(expr, UnaryOp):
             val = self.emit(expr.operand, env)
             reg = self._tmp()
