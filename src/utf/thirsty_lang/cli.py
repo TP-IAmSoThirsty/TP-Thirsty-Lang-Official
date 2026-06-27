@@ -49,6 +49,10 @@ def main():
     run_parser.add_argument("--policy", type=str, help="Path to a .tarl policy file to route governed calls through")
     run_parser.add_argument("--demo", action="store_true", help="Run demo program")
     run_parser.add_argument("--locked", action="store_true", help="Require lockfile verification before executing")
+    run_parser.add_argument("--hardened", action="store_true", help="Hardened posture: require an authenticated (signed) authority and Ed25519-signed proofs at every governed gate")
+    run_parser.add_argument("--authority-token", type=str, metavar="FILE", help="Path to a signed authority claim (JSON) authenticating the authority")
+    run_parser.add_argument("--authority-key", type=str, action="append", metavar="ID:HEX", help="Trusted issuer Ed25519 public key for verifying the authority token (repeatable)")
+    run_parser.add_argument("--sign-proofs", type=str, metavar="ID:HEX", help="Ed25519 private seed (hex) the runtime uses to sign decision proofs")
 
     # repl
     repl_parser = subparsers.add_parser("repl", help="Start interactive REPL")
@@ -234,6 +238,7 @@ pour result
     if authority:
         interpreter.set_authority(authority)
     policy_path = getattr(args, "policy", None)
+    runtime = None
     if policy_path:
         if not os.path.isfile(policy_path):
             print(f"Error: policy file not found: {policy_path}", file=sys.stderr)
@@ -242,10 +247,49 @@ pour result
         from utf.tarl.runtime import TarlRuntime
         with open(policy_path) as pf:
             policy = PolicyParser.parse(pf.read())
-        interpreter.attach_tarl(TarlRuntime(policy))
+        runtime = TarlRuntime(policy)
+        interpreter.attach_tarl(runtime)
         # A policy with no authority tag still needs a context to evaluate.
         if authority is None:
             interpreter.set_authority("")
+
+    # Authenticated authority provenance: verify a signed claim against trusted
+    # issuer keys and bind the authenticated identity (overriding any bare tag).
+    token_path = getattr(args, "authority_token", None)
+    if token_path:
+        from utf.tarl.authority import AuthorityClaim, AuthorityVerifier
+        if not os.path.isfile(token_path):
+            print(f"Error: authority token not found: {token_path}", file=sys.stderr)
+            sys.exit(1)
+        verifier = AuthorityVerifier()
+        for spec in (getattr(args, "authority_key", None) or []):
+            kid, _, hexkey = spec.partition(":")
+            try:
+                verifier.add_ed25519_key(kid, bytes.fromhex(hexkey))
+            except ValueError as e:
+                print(f"Error: invalid --authority-key {spec!r}: {e}", file=sys.stderr)
+                sys.exit(1)
+        with open(token_path) as tf:
+            claim = AuthorityClaim.from_json(tf.read())
+        auth_result = verifier.verify(claim)
+        if not auth_result.valid:
+            print(f"Error: authority token rejected: {auth_result.reason}", file=sys.stderr)
+            sys.exit(1)
+        interpreter.set_verified_authority(auth_result.authority)
+
+    # Proof signing: give the runtime an Ed25519 key so decision proofs are
+    # non-repudiable (required by hardened mode).
+    sign_spec = getattr(args, "sign_proofs", None)
+    if sign_spec and runtime is not None:
+        kid, _, hexseed = sign_spec.partition(":")
+        try:
+            runtime.set_ed25519_signing_key(kid, bytes.fromhex(hexseed))
+        except ValueError as e:
+            print(f"Error: invalid --sign-proofs {sign_spec!r}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if getattr(args, "hardened", False):
+        interpreter.set_hardened(True)
 
     try:
         result = interpreter.interpret(ast, mode=args.thirst_level)

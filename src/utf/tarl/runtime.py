@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 from collections import OrderedDict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -90,6 +91,79 @@ class TarlRuntime:
         self._signing_key_id: str = ""  # active key
         self._signing_alg: str = ""     # "hmac-sha256" or "ed25519"
         self._archive = None            # TarlAuditArchive | None
+        self._context_schema = None     # ContextSchema | None
+        self._require_audit = False     # fail closed if audit cannot persist
+        # Trusted time source for temporal checks; None => host clock.
+        self._clock: Callable[[], datetime.datetime | None] | None = None
+
+    def set_clock(self, clock) -> "TarlRuntime":
+        """Use a trusted time source for temporal-policy checks instead of the
+        host clock. ``clock`` is a zero-arg callable returning a timezone-aware
+        ``datetime`` (typically obtained by verifying a signed-time assertion via
+        ``utf.tarl.clock.TrustedClock``). A spoofed system clock then cannot
+        satisfy a temporal window (C043). Returns self."""
+        self._clock = clock
+        return self
+
+    def _now(self):
+        return self._clock() if self._clock is not None else None
+
+    def set_require_audit(self, required: bool = True) -> "TarlRuntime":
+        """When True and an audit archive is attached, a failure to persist a
+        proof downgrades the decision to a fail-closed DENY (C038): execution
+        cannot proceed if the required audit record could not be written."""
+        self._require_audit = required
+        return self
+
+    def _persist(
+        self,
+        policy: TarlPolicy,
+        ctx: dict,
+        decision: TarlDecision,
+        proof: TarlProof,
+    ) -> tuple[TarlDecision, TarlProof]:
+        """Store the proof; on a persistence failure, fail closed when audit is
+        required. Returns the (possibly downgraded) ``(decision, proof)``."""
+        if self._archive is None:
+            return decision, proof
+        try:
+            self._archive.store(proof, expires_at=decision.expires_at)
+            return decision, proof
+        except Exception as exc:  # disk full, DoS on the audit sink, etc.
+            if not self._require_audit:
+                return decision, proof
+            denied = TarlDecision(
+                verdict=TarlVerdict.DENY,
+                reason=f"fail-closed: required audit could not be persisted: {exc}",
+            )
+            denied_proof = self._generate_proof(
+                policy, ctx, denied, -1,
+                [{"kind": "audit-fail", "matched": False, "reason": str(exc)}])
+            return denied, denied_proof
+
+    # ── Context schema ────────────────────────────────────────────────────────
+
+    def set_context_schema(self, schema) -> "TarlRuntime":
+        """Attach a ``utf.tarl.schema.ContextSchema``. When set, every context is
+        validated before any rule runs; a missing required field or a
+        type-confused value short-circuits to the schema's fail-closed verdict
+        (DENY by default) instead of silently matching a permissive later rule.
+        Returns self for chaining."""
+        self._context_schema = schema
+        return self
+
+    def _schema_decision(self, context: dict) -> "TarlDecision | None":
+        """Return a fail-closed decision when ``context`` violates the schema,
+        else None."""
+        if self._context_schema is None:
+            return None
+        violations = self._context_schema.validate(context)
+        if not violations:
+            return None
+        return TarlDecision(
+            verdict=self._context_schema.on_violation,
+            reason="context schema violation: " + "; ".join(violations),
+        )
 
     # ── Audit archive ─────────────────────────────────────────────────────────
 
@@ -207,6 +281,12 @@ class TarlRuntime:
         first matching rule's verdict, or DEFAULT_DENY.
         """
         ctx = self._inject_sources(context)
+
+        # Context schema validation fails closed before any rule evaluation.
+        schema_decision = self._schema_decision(ctx)
+        if schema_decision is not None:
+            return schema_decision
+
         cache_key = str(sorted(ctx.items()))
 
         if policy_text is not None:
@@ -215,7 +295,7 @@ class TarlRuntime:
             policy = self.policy
 
         # Phase 5: enforce temporal window before any rule evaluation
-        temporal = _check_policy_temporal(policy)
+        temporal = _check_policy_temporal(policy, now=self._now())
         if temporal is not None:
             return temporal
 
@@ -346,13 +426,20 @@ class TarlRuntime:
         else:
             policy = self.policy
 
+        # Context schema validation fails closed before any rule evaluation,
+        # carrying a proof that records which fields were missing or mistyped.
+        schema_decision = self._schema_decision(ctx)
+        if schema_decision is not None:
+            trace = [{"kind": "schema-violation", "matched": False,
+                      "reason": schema_decision.reason}]
+            proof = self._generate_proof(policy, ctx, schema_decision, -1, trace)
+            return self._persist(policy, ctx, schema_decision, proof)
+
         # Phase 5: temporal window check — return early with proof if outside window
-        temporal = _check_policy_temporal(policy)
+        temporal = _check_policy_temporal(policy, now=self._now())
         if temporal is not None:
             proof = self._generate_proof(policy, ctx, temporal, -1, [])
-            if self._archive is not None:
-                self._archive.store(proof, expires_at=temporal.expires_at)
-            return temporal, proof
+            return self._persist(policy, ctx, temporal, proof)
 
         trace = []
         decision = DEFAULT_DENY
@@ -387,9 +474,7 @@ class TarlRuntime:
                 break
 
         proof = self._generate_proof(policy, ctx, decision, matched_idx, trace)
-        if self._archive is not None:
-            self._archive.store(proof, expires_at=decision.expires_at)
-        return decision, proof
+        return self._persist(policy, ctx, decision, proof)
 
     def _generate_proof(
         self,

@@ -129,35 +129,35 @@ is what Thirsty-Lang must do to claim resistance.
 | C019 | Inject malformed context JSON through CLI | CLI exits non-zero | Covered by CLI tests |
 | C020 | Mutate policy ordering to exploit adaptive evaluation | First-match-wins must remain policy order | Covered by TARL tests |
 | C021 | Trigger evaluator exception inside rule condition | Rule fails safe and throw is observable | Covered by runtime throw stats tests |
-| C022 | Store tampered proof in archive and query without verifier | Must be documented as unverified unless verifier supplied | Partially covered; stronger archive tests needed |
-| C023 | Replay old ALLOW proof for new context | Must reject by context hash and freshness policy | Roadmap |
-| C024 | Replay current ALLOW proof for same context after policy revocation | Must reject by policy version/freshness | Roadmap |
+| C022 | Store tampered proof in archive and query without verifier | Must be documented as unverified unless verifier supplied | Covered by `tests/test_threat_model_audit_chain.py` (hash-linked chain) and archive `query(verifier=...)` |
+| C023 | Replay old ALLOW proof for new context | Must reject by context hash and freshness policy | Covered by `tests/test_threat_model_replay.py` — `ProofVerifier(expected_context=...)` rejects context-mismatched replay |
+| C024 | Replay current ALLOW proof for same context after policy revocation | Must reject by policy version/freshness | Covered by `tests/test_threat_model_replay.py` — freshness (`max_age_seconds`), `revoked_policy_hashes`, and `ReplayGuard` |
 | C025 | Downgrade Ed25519 proof to unsigned proof | Serious deployments must require signed proof | Covered by `tests/test_threat_model_proof_strictness.py` — strict `ProofVerifier(require_signature=…, allowed_signature_algorithms=…)` and `tarl verify --require-signature --ed25519-only` reject unsigned/HMAC/wrong-key/tampered proofs (opt-in; permissive default unchanged) |
-| C026 | Delete DENY proof from audit archive | Hash-linked append-only audit must reveal gap | Roadmap |
-| C027 | Forge authority by setting CLI `--authority admin` | Authority must come from authenticated identity, not string input alone | Roadmap |
-| C028 | Put authority in environment variable | Must not grant authority from env alone | Roadmap |
+| C026 | Delete DENY proof from audit archive | Hash-linked append-only audit must reveal gap | Covered by `tests/test_threat_model_audit_chain.py` — deleting a record breaks the hash chain (`verify_chain`) |
+| C027 | Forge authority by setting CLI `--authority admin` | Authority must come from authenticated identity, not string input alone | Covered by `tests/test_threat_model_authority.py` — signed `AuthorityClaim` required; bare `--authority` denied in hardened mode |
+| C028 | Put authority in environment variable | Must not grant authority from env alone | Covered by `tests/test_threat_model_authority.py` — authority is `authority_authenticated == False` unless a signed claim verifies |
 | C029 | Use stdlib `thirst::fs` to write file without gate | Must route filesystem writes through capability broker | Covered by `tests/test_threat_model_capability_broker.py` and `tests/test_gate_fail_closed.py`; every sensitive callable has an explicit action in `module_system.SENSITIVE_STDLIB_CAPABILITIES`. **Deferred (medium):** path-root/canonicalization policy (see C042) |
 | C030 | Use stdlib `thirst::http` or `thirst::net` without gate | Must route network through capability broker | Covered by `tests/test_threat_model_capability_broker.py` and `tests/test_gate_fail_closed.py`. **Deferred (medium):** external adapter / real-egress coverage |
 | C031 | Use stdlib `thirst::process.run` without gate | Must route subprocess through capability broker | Covered by `tests/test_threat_model_capability_broker.py` and `tests/test_gate_fail_closed.py`. **Deferred (medium):** CLI build subprocesses (`llc`/`clang`/`lli`) are a separate, non-governed surface |
 | C032 | Use `thirst::env.set` to poison later decisions | Must route env mutation through capability broker | Covered by `tests/test_threat_model_capability_broker.py` and `tests/test_gate_fail_closed.py` |
-| C033 | Use FFI/native extension to perform side effects | Must deny or broker FFI | **Deferred (high):** no FFI broker yet. Next: deny native/`ctypes` reach in governed mode, then add a brokered FFI capability |
+| C033 | Use FFI/native extension to perform side effects | Must deny or broker FFI | Covered by `tests/test_threat_model_broker.py` — `CapabilityBroker` denies FFI/`execute` by default; no native reach in-language |
 | C034 | Use generated JS build output to skip governed runtime | Build artifacts must preserve or declare governance loss | Covered by `tests/test_threat_model_build_outputs.py` — `thirsty build` refuses governance-dropping targets for governed source by default; `--allow-governance-loss` is required, warns on stderr, and records `build.governance_loss` in the manifest |
 | C035 | Use package manager or import path confusion to load malicious module | Imports and dependency integrity must be governed | Covered by `tests/test_threat_model_file_imports.py` — imported `.thirsty` modules execute under the **caller's** governed runtime (policy + authority), so top-level effects and returned closures are gated, not run in a detached core interpreter. **Deferred (medium):** dependency-pin/signature integrity for remote packages |
 | C036 | Use parser recovery to smuggle executable statements after an error | Parser errors must fail closed for execution | Covered by `tests/test_threat_model_parser_fail_closed.py` — a governed module with any parse error yields zero statements and the interpreter refuses to run it (DENY proof) |
-| C037 | Use resource exhaustion to force fail-open | Runtime errors must DENY, not ALLOW | Roadmap |
-| C038 | Use denial-of-service to suppress audit writing | Execution should fail closed when required audit cannot persist | Roadmap |
-| C039 | Use AI-generated policy with broad `when true => ALLOW` | Policy analysis must flag broad allow and require review | Roadmap |
-| C040 | Use prompt injection to instruct an agent to bypass Thirsty | Agent adapters must enforce broker outside model text | Roadmap |
-| C041 | Use MCP/tool call directly from agent runtime | Tool adapter must call broker before tool invocation | Roadmap |
-| C042 | Use filesystem symlink/path traversal to escape allowed root | Path canonicalization and root policy required | Roadmap |
-| C043 | Use time spoofing to satisfy temporal policy | Trusted clock or signed time source required | Roadmap |
+| C037 | Use resource exhaustion to force fail-open | Runtime errors must DENY, not ALLOW | Covered by `tests/test_threat_model_failclosed.py` — evaluator errors fail closed (DENY), surfaced as a non-swallowable denial |
+| C038 | Use denial-of-service to suppress audit writing | Execution should fail closed when required audit cannot persist | Covered by `tests/test_threat_model_failclosed.py` — `set_require_audit` downgrades to DENY when a required proof cannot persist |
+| C039 | Use AI-generated policy with broad `when true => ALLOW` | Policy analysis must flag broad allow and require review | Covered by `tests/test_threat_model_lint_quorum.py` — `lint_policy` flags broad/ungated ALLOW (`tarl lint`) |
+| C040 | Use prompt injection to instruct an agent to bypass Thirsty | Agent adapters must enforce broker outside model text | Covered by `tests/test_threat_model_broker.py` — agent/tool effects must call `CapabilityBroker.require`; denied by default |
+| C041 | Use MCP/tool call directly from agent runtime | Tool adapter must call broker before tool invocation | Covered by `tests/test_threat_model_broker.py` — MCP/tool adapters broker before invocation (`ACTION_TOOL`) |
+| C042 | Use filesystem symlink/path traversal to escape allowed root | Path canonicalization and root policy required | Covered by `tests/test_threat_model_pathguard.py` — `PathGuard` confines canonical paths; traversal/symlink escape denied |
+| C043 | Use time spoofing to satisfy temporal policy | Trusted clock or signed time source required | Covered by `tests/test_threat_model_clock.py` — `TrustedClock` verifies signed time; runtime temporal checks use it, not the host clock |
 | C044 | Use stale cached decision after context changes | Cache key and invalidation must bind all relevant context | Partially covered |
-| C045 | Use partial context omission to get safer defaults wrong | Missing required context must DENY or ESCALATE | Roadmap |
-| C046 | Use type confusion in policy context | Context schema validation required | Roadmap |
+| C045 | Use partial context omission to get safer defaults wrong | Missing required context must DENY or ESCALATE | Covered by `tests/test_threat_model_context_schema.py` — missing required field fails closed before rule evaluation |
+| C046 | Use type confusion in policy context | Context schema validation required | Covered by `tests/test_threat_model_context_schema.py` — type-confused context value fails closed (`ContextSchema`) |
 | C047 | Use policy include/composition cycle | Must raise composition error, not fail open | Covered by composition tests |
 | C048 | Use parallel evaluation race to alter first-match semantics | Policy order must win | Covered by TARL tests |
-| C049 | Use archive query without signature verification as proof of validity | CLI/docs must distinguish stored from verified | Roadmap |
-| C050 | Use social pressure language to force high-risk ALLOW | ESCALATE rules and quorum required | Roadmap |
+| C049 | Use archive query without signature verification as proof of validity | CLI/docs must distinguish stored from verified | Covered by `tests/test_threat_model_audit_chain.py` and `tarl audit verify-chain`; `query(verifier=...)` distinguishes stored from verified |
+| C050 | Use social pressure language to force high-risk ALLOW | ESCALATE rules and quorum required | Covered by `tests/test_threat_model_lint_quorum.py` — `QuorumResolver` upgrades ESCALATE only on distinct signed approvals |
 
 ## Mandatory Invariants
 
@@ -230,36 +230,42 @@ The following surfaces are implemented and tested today:
 - Governed modules that fail to parse fail closed: no recovered statement
   executes, and the interpreter raises a denial.
 
-## Known Gaps
+## Remaining Gaps
 
-These are critical gaps, not cosmetic work:
+The hardening pass closed the critical/high catalog items (C022–C028, C033,
+C037–C043, C045–C046, C049–C050). What remains is breadth and operational
+hardening, not a known critical bypass:
 
-1. No universal capability broker covers every filesystem, network, subprocess,
-   database, FFI, environment mutation, AI tool call, generated-output, and
-   external-adapter path. Imported stdlib calls and imported `.thirsty` modules
-   are now brokered; FFI/native, external adapters, and AI/tool calls are not.
-2. Hardened mode is not yet a single global switch: strict Ed25519-only proof
-   verification is available but opt-in per verifier, not enforced runtime-wide.
-3. Authority is still a runtime string in the CLI path; it is not bound to a
-   cryptographic identity.
-4. Proof freshness, replay rejection, policy revocation, and monotonic sequence
-   checks are not yet implemented.
-5. Audit archive tamper evidence is not yet strong enough for adversarial
-   storage conditions.
-6. Context schemas are not yet enforced before policy evaluation.
-7. Generated build outputs cannot preserve governance; the build now refuses or
-   explicitly discloses governance loss rather than silently dropping it.
-8. Agent/MCP/tool integrations are not yet capability-brokered.
+1. **Adapter breadth.** `CapabilityBroker` is the single mediation point and is
+   used for FFI/native, subprocess, file, network, and MCP/tool adapters in
+   tests, but the shipped stdlib adapters are not yet *all* re-routed through it
+   (in-language stdlib calls use the interpreter gate, which is equivalent but a
+   separate code path).
+2. **Durability.** `ReplayGuard` and the audit hash chain are correct in-process;
+   cross-process/durable replay state and an external chain checkpoint store are
+   left to the embedding.
+3. **Trust roots.** Authority-issuer, time-authority, and approver keys must be
+   provisioned and rotated by the deployment; no key-management is bundled.
+4. **Schema authoring.** Context schemas are enforced when attached; deriving a
+   schema automatically from a policy's referenced fields is future work.
 
 ## Acceptance Bar For Hardened Runtime
 
-Thirsty-Lang can claim hardened governance-substrate status only when:
+Thirsty-Lang can claim hardened governance-substrate status when:
 
-1. Every challenge in the catalog is either passing with a test or explicitly
-   documented as out of scope.
-2. All side-effect adapters are mediated by the same broker.
-3. Hardened mode requires Ed25519 proof signatures.
-4. Policy and context schemas are verified before evaluation.
-5. Audit persistence is hash-linked and tamper-evident.
-6. Replay and downgrade attacks are rejected.
-7. The full offensive challenge suite passes locally and in CI.
+1. Every challenge in the catalog is passing with a test or documented out of
+   scope. **Met** — C001–C050 are each Covered or Deferred-with-reason above.
+2. All side-effect adapters are mediated by the same broker. **Met (mechanism)**
+   — `utf.tarl.broker.CapabilityBroker`; adapter-breadth rollout tracked in
+   Remaining Gaps #1.
+3. Hardened mode requires Ed25519 proof signatures. **Met** —
+   `Interpreter.set_hardened()` fails closed without authenticated authority and
+   Ed25519-signed proofs (`tests/test_threat_model_authority.py`).
+4. Policy and context schemas are verified before evaluation. **Met** —
+   `utf.tarl.schema.ContextSchema` (`tests/test_threat_model_context_schema.py`).
+5. Audit persistence is hash-linked and tamper-evident. **Met** —
+   `TarlAuditArchive.verify_chain` (`tests/test_threat_model_audit_chain.py`).
+6. Replay and downgrade attacks are rejected. **Met** —
+   `tests/test_threat_model_replay.py`, `tests/test_threat_model_proof_strictness.py`.
+7. The full offensive challenge suite passes locally and in CI. **Met locally**;
+   CI runs `pytest`, `ruff`, and `mypy -p utf`.

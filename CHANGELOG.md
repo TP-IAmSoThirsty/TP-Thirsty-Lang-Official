@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Hardened-runtime acceptance bar (C022–C050)
+
+Closes the remaining critical/high threat-model challenges so the governed
+runtime meets its own hardened-runtime acceptance bar. All new behavior is
+opt-in and backward compatible.
+
+- **Authority provenance (C027–C028)** — `utf.tarl.authority`: Ed25519-signed
+  `AuthorityClaim` minted by an `AuthorityIssuer` and checked by an
+  `AuthorityVerifier`. `Interpreter.set_hardened()` fails closed unless the
+  authority is authenticated *and* the runtime signs proofs with Ed25519. A bare
+  `--authority` string grants nothing in hardened mode. New `thirsty run` flags:
+  `--hardened`, `--authority-token`, `--authority-key`, `--sign-proofs`.
+- **Context schema validation (C045–C046)** — `utf.tarl.schema.ContextSchema`;
+  `TarlRuntime.set_context_schema` fails closed on missing/type-confused fields
+  before any rule runs.
+- **Replay/freshness/revocation (C023–C024)** — `ProofVerifier` gains
+  `expected_context`, `max_age_seconds`, `revoked_policy_hashes`, and a
+  `ReplayGuard`. `tarl verify` gains `--max-age` and `--revoked-policy-hash`.
+- **Tamper-evident audit (C022/C026/C049)** — `TarlAuditArchive` hash-links every
+  record; `verify_chain()` detects edits, deletions, and reordering. New
+  `tarl audit verify-chain`.
+- **Capability broker (C033/C040/C041)** — `utf.tarl.broker.CapabilityBroker`:
+  one fail-closed mediation point for FFI/native, subprocess, file, network, and
+  MCP/agent tool adapters, with `require_path` confining filesystem targets.
+- **Fail-closed under failure (C037–C038)** — evaluator errors surface as
+  non-swallowable governance denials; `TarlRuntime.set_require_audit` downgrades
+  to DENY when a required proof cannot persist.
+- **Path confinement (C042)** — `utf.tarl.pathguard.PathGuard` confines canonical
+  (symlink-resolved) paths to allowed roots.
+- **Trusted clock (C043)** — `utf.tarl.clock`: `TimeAuthority`/`TrustedClock`;
+  `TarlRuntime.set_clock` evaluates temporal windows against verified signed time.
+- **Policy lint + quorum (C039/C050)** — `utf.tarl.linter.lint_policy`
+  (`tarl lint`) flags broad/ungated ALLOW; `utf.tarl.escalation.QuorumResolver`
+  upgrades ESCALATE to ALLOW only on distinct signed approvals.
+- CI now runs `mypy -p utf` as a type gate.
+
 ### Added — Offensive threat model
 
 - Added `docs/THREAT_MODEL.md`, an offensive adversary model and challenge

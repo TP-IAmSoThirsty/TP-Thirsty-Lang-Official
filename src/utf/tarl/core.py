@@ -471,15 +471,22 @@ def _parse_duration(s: str) -> int | None:
     return total if total > 0 else None
 
 
-def _check_policy_temporal(policy: "TarlPolicy") -> Optional["TarlDecision"]:
+def _check_policy_temporal(
+    policy: "TarlPolicy",
+    now: "datetime.datetime | None" = None,
+) -> Optional["TarlDecision"]:
     """
     Check whether a policy is within its declared effective time window.
+
+    ``now`` lets a caller supply a **trusted** time (e.g. a verified signed-time
+    source) instead of the host clock, so a spoofed system clock cannot satisfy a
+    temporal window (C043). Defaults to ``datetime.now(UTC)``.
 
     Returns a TarlDecision when the policy is outside its window (not-yet-active
     or expired/auto-expired), using policy.on_expiry or ESCALATE as the verdict.
     Returns None when the policy is in-window and should be evaluated normally.
     """
-    now = datetime.datetime.now(datetime.UTC)
+    now = now or datetime.datetime.now(datetime.UTC)
     expiry_verdict = policy.on_expiry or TarlVerdict.ESCALATE
 
     def _parse_dt(s: str) -> datetime.datetime | None:

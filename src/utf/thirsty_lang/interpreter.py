@@ -172,6 +172,13 @@ class Interpreter:
         # Governance wiring (Part A): optional policy engine + authority context.
         self.tarl_runtime = None
         self.authority = None
+        # Authority provenance: a bare string authority is self-asserted
+        # (authenticated=False, no grants); a verified signed claim sets these.
+        self.authority_authenticated = False
+        self.authority_grants: tuple[str, ...] = ()
+        # Hardened posture: when True, governed gates additionally require an
+        # authenticated authority and Ed25519-signed proofs, or they fail closed.
+        self.hardened = False
         self._last_proof = None
         self._register_builtins()
         if self.opt_level >= 2:
@@ -497,7 +504,12 @@ class Interpreter:
             return
         from utf.tarl.spec import TarlVerdict
         ctx = {"action": action, "target": str(target),
-               "authority": self.authority or ""}
+               **self._authority_context()}
+        # Hardened-mode prerequisites (authenticated authority + Ed25519 proofs)
+        # fail closed before any policy is consulted.
+        hardened_violation = self._hardened_precheck(action, target)
+        if hardened_violation is not None:
+            raise hardened_violation
         # Fail-closed: governed but no policy engine/authority to grant it.
         if self.tarl_runtime is None or self.authority is None:
             proof = self._make_decision_proof(
@@ -513,7 +525,24 @@ class Interpreter:
                 "fail-closed: governed mode requires a policy engine to "
                 "authorize this capability (run with --policy)",
                 proof)
-        decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+        try:
+            decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+        except GovernanceViolation:
+            raise
+        except Exception as exc:
+            # Resource exhaustion / evaluator failure must DENY, never fail open
+            # (C037), and must surface as a governance denial that spillage
+            # cannot swallow — not a raw exception.
+            proof = self._make_decision_proof(
+                source="<fail-closed: policy evaluation error>",
+                context=ctx, verdict=TarlVerdict.DENY, matched_condition="",
+                trace=[{"kind": "fail-closed", "action": action,
+                        "target": str(target),
+                        "reason": f"policy evaluation error: {exc}"}])
+            self._last_proof = proof
+            raise GovernanceViolation(
+                f"{action} {target}",
+                f"fail-closed: policy evaluation error: {exc}", proof) from exc
         self._last_proof = proof
         if decision.verdict != TarlVerdict.ALLOW:
             raise GovernanceViolation(
@@ -729,9 +758,75 @@ class Interpreter:
         return self
 
     def set_authority(self, authority) -> "Interpreter":
-        """Set the authority context consulted during governed calls."""
+        """Set a *self-asserted* authority (a bare string subject).
+
+        This carries no authenticity: ``authority_authenticated`` stays False and
+        no grants are bound. In hardened mode such an authority cannot pass a
+        gated capability. Use :meth:`set_verified_authority` for a signed
+        credential. Passing a ``VerifiedAuthority`` here is also accepted.
+        """
+        from utf.tarl.authority import VerifiedAuthority
+        if isinstance(authority, VerifiedAuthority):
+            return self.set_verified_authority(authority)
         self.authority = authority
+        self.authority_authenticated = False
+        self.authority_grants = ()
         return self
+
+    def set_verified_authority(self, verified) -> "Interpreter":
+        """Bind an authenticated authority resolved from a signed claim.
+
+        ``verified`` is a ``utf.tarl.authority.VerifiedAuthority``. Its subject,
+        grants, and authenticity flag are injected into every governance context.
+        """
+        self.authority = verified.subject
+        self.authority_authenticated = bool(verified.authenticated)
+        self.authority_grants = tuple(verified.grants)
+        return self
+
+    def set_hardened(self, hardened: bool = True) -> "Interpreter":
+        """Enable the hardened posture (authenticated authority + Ed25519 proofs
+        required at every governed gate, else fail closed)."""
+        self.hardened = hardened
+        return self
+
+    def _authority_context(self) -> dict:
+        """Authority fields merged into every governance evaluation context."""
+        return {
+            "authority": self.authority or "",
+            "authority_subject": self.authority or "",
+            "authority_authenticated": self.authority_authenticated,
+            "authority_grants": list(self.authority_grants),
+        }
+
+    def _hardened_precheck(self, action: str, target: str):
+        """Hardened-mode gate prerequisites, evaluated before policy routing.
+
+        Returns a fail-closed ``GovernanceViolation`` to raise, or None when the
+        prerequisites hold. Enforces: an authenticated authority, and a runtime
+        configured to emit Ed25519-signed proofs (non-repudiable audit).
+        """
+        if not self.hardened:
+            return None
+        from utf.tarl.spec import TarlVerdict
+        reason = None
+        if not self.authority_authenticated:
+            reason = ("hardened mode requires an authenticated (signed) "
+                      "authority; a self-asserted authority is not sufficient")
+        elif getattr(self.tarl_runtime, "_signing_alg", "") != "ed25519":
+            reason = ("hardened mode requires Ed25519-signed proofs; configure "
+                      "an Ed25519 signing key on the runtime")
+        if reason is None:
+            return None
+        proof = self._make_decision_proof(
+            source="<fail-closed: hardened-mode prerequisite>",
+            context={**self._authority_context(), "action": action,
+                     "target": str(target)},
+            verdict=TarlVerdict.DENY, matched_condition="",
+            trace=[{"kind": "fail-closed", "action": action,
+                    "target": str(target), "reason": reason}])
+        self._last_proof = proof
+        return GovernanceViolation(f"{action} {target}", reason, proof)
 
     def _execute_governed_function_decl(self, stmt: GovernedFunctionDecl):
         """Define a top-level governed function with full contract enforcement."""
@@ -862,8 +957,15 @@ class Interpreter:
             # TARL policy routing (deny-by-default access control). A policy
             # proof supersedes the contract proof as the boundary certificate.
             if self.tarl_runtime is not None and self.authority is not None:
+                # Hardened-mode prerequisites fail closed before policy routing.
+                action_name = decl.name if decl is not None else "<call>"
+                hardened_violation = self._hardened_precheck(
+                    action_name, action_name)
+                if hardened_violation is not None:
+                    return (False, hardened_violation.reason,
+                            hardened_violation.proof)
                 policy_ctx = dict(context)
-                policy_ctx["authority"] = self.authority
+                policy_ctx.update(self._authority_context())
                 if decl is not None:
                     policy_ctx.setdefault("action", decl.name)
                 decision, proof = self.tarl_runtime.evaluate_with_proof(

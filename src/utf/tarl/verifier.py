@@ -10,14 +10,70 @@ No runtime or policy engine is required — proofs are self-contained.
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
+import json
 from dataclasses import dataclass, field
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from utf.tarl.spec import TarlProof
+
+
+def canonical_context_hash(context: dict) -> str:
+    """SHA-256 of a context, matching how the runtime stamps proof.context_hash.
+
+    Used to bind a proof to the context it was issued for, so an old ALLOW proof
+    cannot be replayed against a different context (C023)."""
+    ctx_bytes = json.dumps(
+        context, sort_keys=True, default=str, separators=(",", ":")
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(ctx_bytes).hexdigest()
+
+
+def _check_freshness(
+    proof: TarlProof,
+    max_age_seconds: float,
+    now: datetime.datetime | None,
+) -> bool:
+    """True if proof.evaluated_at is within max_age_seconds of ``now``."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    try:
+        dt = datetime.datetime.fromisoformat(
+            proof.evaluated_at.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.UTC)
+    age = (now - dt).total_seconds()
+    # Allow small clock skew into the future; reject anything older than the bound.
+    return -60.0 <= age <= max_age_seconds
+
+
+class ReplayGuard:
+    """Records accepted proofs and rejects exact reuse (single-use enforcement).
+
+    A proof's identity is its context hash, evaluation timestamp, and signature;
+    a duplicate is a replay. State is in-memory by default; back it with durable
+    storage for cross-process enforcement."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    @staticmethod
+    def proof_id(proof: TarlProof) -> str:
+        return f"{proof.context_hash}|{proof.evaluated_at}|{proof.signature}"
+
+    def check_and_record(self, proof: TarlProof) -> bool:
+        """Return True the first time a proof is seen, False on every reuse."""
+        pid = self.proof_id(proof)
+        if pid in self._seen:
+            return False
+        self._seen.add(pid)
+        return True
 
 
 @dataclass
@@ -63,6 +119,9 @@ class ProofVerifier:
         require_signature: bool = False,
         allowed_signature_algorithms: set[str] | None = None,
         require_policy_source: bool = False,
+        max_age_seconds: float | None = None,
+        revoked_policy_hashes: set[str] | None = None,
+        replay_guard: ReplayGuard | None = None,
     ) -> None:
         """
         Strict-mode options (all default to today's permissive behavior):
@@ -74,6 +133,12 @@ class ProofVerifier:
                                           (``hmac`` / ``ed25519``).
           require_policy_source         — verification without a policy_source to
                                           bind policy_hash against is INVALID.
+          max_age_seconds               — reject proofs whose evaluated_at is
+                                          older than this (freshness; C024).
+          revoked_policy_hashes         — proofs bound to a revoked policy hash
+                                          are INVALID (policy revocation; C024).
+          replay_guard                  — a ReplayGuard; a proof already seen is
+                                          rejected as a replay (C023/C024).
         """
         self._hmac_keys: dict[str, bytes] = {}
         self._ed25519_keys: dict[str, Ed25519PublicKey] = {}
@@ -84,6 +149,9 @@ class ProofVerifier:
             else None
         )
         self.require_policy_source = require_policy_source
+        self.max_age_seconds = max_age_seconds
+        self.revoked_policy_hashes = revoked_policy_hashes or set()
+        self.replay_guard = replay_guard
 
     def add_hmac_key(self, key_id: str, secret: bytes) -> ProofVerifier:
         """Register an HMAC-SHA256 key for signature verification."""
@@ -105,6 +173,8 @@ class ProofVerifier:
         self,
         proof: TarlProof,
         policy_source: str | None = None,
+        expected_context: dict | None = None,
+        now: datetime.datetime | None = None,
     ) -> VerificationResult:
         """
         Verify a TarlProof.
@@ -160,10 +230,48 @@ class ProofVerifier:
             "trace consistent" if trace_ok else "trace INCONSISTENT"
         )
 
+        # ── 4. Context binding (C023: replay an old proof for a new context) ──
+        if expected_context is not None:
+            cb_ok = proof.context_hash == canonical_context_hash(expected_context)
+            checks["context_binding"] = cb_ok
+            messages.append(
+                "context binds" if cb_ok else "context hash MISMATCH"
+            )
+        else:
+            checks["context_binding"] = None
+
+        # ── 5. Freshness (C024: replay a stale ALLOW) ─────────────────────────
+        if self.max_age_seconds is not None:
+            fr_ok = _check_freshness(proof, self.max_age_seconds, now)
+            checks["freshness"] = fr_ok
+            messages.append("fresh" if fr_ok else "proof is STALE")
+        else:
+            checks["freshness"] = None
+
+        # ── 6. Policy revocation (C024) ───────────────────────────────────────
+        if self.revoked_policy_hashes:
+            nr_ok = proof.policy_hash not in self.revoked_policy_hashes
+            checks["not_revoked"] = nr_ok
+            messages.append("policy current" if nr_ok else "policy REVOKED")
+        else:
+            checks["not_revoked"] = None
+
+        # ── 7. Replay (exact reuse of a previously-accepted proof) ────────────
+        if self.replay_guard is not None:
+            fresh = self.replay_guard.check_and_record(proof)
+            checks["not_replayed"] = fresh
+            messages.append("first use" if fresh else "REPLAYED proof")
+        else:
+            checks["not_replayed"] = None
+
         valid = (
             sig_result is not False
             and checks["policy_hash"] is not False
             and trace_ok
+            and checks["context_binding"] is not False
+            and checks["freshness"] is not False
+            and checks["not_revoked"] is not False
+            and checks["not_replayed"] is not False
         )
 
         return VerificationResult(

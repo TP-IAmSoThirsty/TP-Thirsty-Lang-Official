@@ -13,10 +13,39 @@ Usage::
 """
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import threading
+from dataclasses import dataclass
 
 from utf.tarl.spec import TarlProof
+
+# Genesis link for the per-archive hash chain (prev_hash of the first record).
+_GENESIS = "sha256:" + hashlib.sha256(b"TARL-AUDIT-GENESIS").hexdigest()
+
+
+def _entry_hash(prev_hash: str, proof_json: str) -> str:
+    """Chain link: binds this record to its predecessor and its exact contents."""
+    h = hashlib.sha256()
+    h.update(prev_hash.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(proof_json.encode("utf-8"))
+    return "sha256:" + h.hexdigest()
+
+
+@dataclass
+class ChainVerification:
+    """Result of walking the archive's hash chain end to end."""
+
+    valid: bool
+    length: int
+    broken_at: int | None = None  # row id where the chain first breaks
+    reason: str = ""
+
+    def __str__(self) -> str:
+        status = "INTACT" if self.valid else "BROKEN"
+        tail = "" if self.valid else f" at row {self.broken_at}: {self.reason}"
+        return f"[{status}] audit chain, {self.length} record(s){tail}"
 
 
 class TarlAuditArchive:
@@ -61,13 +90,21 @@ class TarlAuditArchive:
                     evaluated_at  TEXT    NOT NULL,
                     expires_at    TEXT,
                     signature     TEXT,
-                    proof_json    TEXT    NOT NULL
+                    proof_json    TEXT    NOT NULL,
+                    prev_hash     TEXT,
+                    entry_hash    TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_verdict
                     ON proofs (verdict);
                 CREATE INDEX IF NOT EXISTS idx_evaluated_at
                     ON proofs (evaluated_at);
             """)
+            # Migrate older archives that predate the hash chain.
+            existing = {r[1] for r in conn.execute(
+                "PRAGMA table_info(proofs)").fetchall()}
+            for col in ("prev_hash", "entry_hash"):
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE proofs ADD COLUMN {col} TEXT")
             conn.commit()
 
     # ── Write ─────────────────────────────────────────────────────────────────
@@ -84,13 +121,21 @@ class TarlAuditArchive:
         :param expires_at:  Optional ISO-8601 UTC expiry from TarlDecision.expires_at.
         :returns:           Row id of the inserted record.
         """
+        proof_json = proof.to_json()
         with self._lock:
             conn = self._connect()
+            # Link this record to the current chain head (genesis if empty).
+            head = conn.execute(
+                "SELECT entry_hash FROM proofs ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            prev_hash = head[0] if head and head[0] else _GENESIS
+            entry_hash = _entry_hash(prev_hash, proof_json)
             cursor = conn.execute(
                 """INSERT INTO proofs
                    (policy_hash, context_hash, verdict, rule_index,
-                    evaluated_at, expires_at, signature, proof_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    evaluated_at, expires_at, signature, proof_json,
+                    prev_hash, entry_hash)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     proof.policy_hash,
                     proof.context_hash,
@@ -99,7 +144,9 @@ class TarlAuditArchive:
                     proof.evaluated_at,
                     expires_at,
                     proof.signature or None,
-                    proof.to_json(),
+                    proof_json,
+                    prev_hash,
+                    entry_hash,
                 ),
             )
             conn.commit()
@@ -186,6 +233,49 @@ class TarlAuditArchive:
                 f"SELECT COUNT(*) FROM proofs {where}", params
             ).fetchone()
         return int(row[0]) if row else 0
+
+    # ── Tamper-evidence ───────────────────────────────────────────────────────
+
+    def head_hash(self) -> str:
+        """Return the current chain head (latest entry_hash), or genesis if empty.
+
+        Persist this externally as a checkpoint: a later ``verify_chain`` whose
+        head differs from a trusted checkpoint reveals suffix rewriting even if
+        the chain re-links internally."""
+        with self._lock:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT entry_hash FROM proofs ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return str(row[0]) if row and row[0] else _GENESIS
+
+    def verify_chain(self) -> ChainVerification:
+        """Walk the hash chain in insertion order and report its integrity.
+
+        Detects record tampering (a modified ``proof_json`` no longer hashes to
+        its stored ``entry_hash``), deletion/reordering (a record's ``prev_hash``
+        no longer matches its predecessor's ``entry_hash``), and a tampered head.
+        """
+        with self._lock:
+            conn = self._connect()
+            rows = conn.execute(
+                "SELECT id, proof_json, prev_hash, entry_hash "
+                "FROM proofs ORDER BY id ASC"
+            ).fetchall()
+        prev = _GENESIS
+        for row_id, proof_json, prev_hash, entry_hash in rows:
+            if prev_hash != prev:
+                return ChainVerification(
+                    False, len(rows), row_id,
+                    "prev_hash does not match the preceding record "
+                    "(deletion, insertion, or reordering)")
+            expected = _entry_hash(prev, proof_json)
+            if entry_hash != expected:
+                return ChainVerification(
+                    False, len(rows), row_id,
+                    "record contents do not match entry_hash (tampered)")
+            prev = entry_hash
+        return ChainVerification(True, len(rows))
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

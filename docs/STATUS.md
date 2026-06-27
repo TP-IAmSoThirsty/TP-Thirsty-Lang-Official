@@ -49,6 +49,21 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | Governed build refuses governance-dropping targets unless explicitly disclosed | Real | `tests/test_threat_model_build_outputs.py` |
 | Import-only policy grants no sensitive stdlib side effect | Real | `tests/test_threat_model_capability_broker.py` |
 
+## Hardened runtime (offensive catalog C022–C050)
+
+| Capability | Status | Test reference |
+|---|---|---|
+| Authenticated authority provenance; hardened mode requires signed authority + Ed25519 proofs | Real | `tests/test_threat_model_authority.py` |
+| Context schema validation fails closed on missing/type-confused fields | Real | `tests/test_threat_model_context_schema.py` |
+| Replay/freshness/revocation rejection in the proof verifier | Real | `tests/test_threat_model_replay.py` |
+| Tamper-evident hash-linked audit chain (`verify_chain`) | Real | `tests/test_threat_model_audit_chain.py` |
+| Universal capability broker (FFI/native + agent/MCP tools) | Real | `tests/test_threat_model_broker.py` |
+| Fail-closed under evaluator error / required-audit failure | Real | `tests/test_threat_model_failclosed.py` |
+| Filesystem path confinement (traversal/symlink escape) | Real | `tests/test_threat_model_pathguard.py` |
+| Broad-ALLOW policy lint + signed ESCALATE quorum | Real | `tests/test_threat_model_lint_quorum.py` |
+| Trusted signed-time source for temporal policy | Real | `tests/test_threat_model_clock.py` |
+| CLI: `tarl lint`, `tarl audit verify-chain`, strict `tarl verify` flags | Real | `tests/test_cli_tarl_hardening.py` |
+
 ## Semantic verifiers
 
 | Capability | Status | Test reference |
