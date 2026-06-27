@@ -49,6 +49,10 @@ def main():
     run_parser.add_argument("--policy", type=str, help="Path to a .tarl policy file to route governed calls through")
     run_parser.add_argument("--demo", action="store_true", help="Run demo program")
     run_parser.add_argument("--locked", action="store_true", help="Require lockfile verification before executing")
+    run_parser.add_argument("--hardened", action="store_true", help="Hardened posture: require an authenticated (signed) authority and Ed25519-signed proofs at every governed gate")
+    run_parser.add_argument("--authority-token", type=str, metavar="FILE", help="Path to a signed authority claim (JSON) authenticating the authority")
+    run_parser.add_argument("--authority-key", type=str, action="append", metavar="ID:HEX", help="Trusted issuer Ed25519 public key for verifying the authority token (repeatable)")
+    run_parser.add_argument("--sign-proofs", type=str, metavar="ID:HEX", help="Ed25519 private seed (hex) the runtime uses to sign decision proofs")
 
     # repl
     repl_parser = subparsers.add_parser("repl", help="Start interactive REPL")
@@ -70,6 +74,7 @@ def main():
     build_parser = subparsers.add_parser("build", help="Build a .thirsty project")
     build_parser.add_argument("--target", choices=["llvm-ir", "llvm-obj", "llvm-exe", "llvm-asm", "llvm-jit", "js", "wasm-pyodide"], default="js", help="Build target")
     build_parser.add_argument("--emit-manifest", action="store_true", help="Emit governance manifest")
+    build_parser.add_argument("--allow-governance-loss", action="store_true", help="Permit building a governed module to a target that drops the governed runtime (records the loss in the manifest)")
     build_parser.add_argument("file", nargs="?", help="Entry point .thirsty file")
 
     # govern
@@ -233,6 +238,7 @@ pour result
     if authority:
         interpreter.set_authority(authority)
     policy_path = getattr(args, "policy", None)
+    runtime = None
     if policy_path:
         if not os.path.isfile(policy_path):
             print(f"Error: policy file not found: {policy_path}", file=sys.stderr)
@@ -241,10 +247,49 @@ pour result
         from utf.tarl.runtime import TarlRuntime
         with open(policy_path) as pf:
             policy = PolicyParser.parse(pf.read())
-        interpreter.attach_tarl(TarlRuntime(policy))
+        runtime = TarlRuntime(policy)
+        interpreter.attach_tarl(runtime)
         # A policy with no authority tag still needs a context to evaluate.
         if authority is None:
             interpreter.set_authority("")
+
+    # Authenticated authority provenance: verify a signed claim against trusted
+    # issuer keys and bind the authenticated identity (overriding any bare tag).
+    token_path = getattr(args, "authority_token", None)
+    if token_path:
+        from utf.tarl.authority import AuthorityClaim, AuthorityVerifier
+        if not os.path.isfile(token_path):
+            print(f"Error: authority token not found: {token_path}", file=sys.stderr)
+            sys.exit(1)
+        verifier = AuthorityVerifier()
+        for spec in (getattr(args, "authority_key", None) or []):
+            kid, _, hexkey = spec.partition(":")
+            try:
+                verifier.add_ed25519_key(kid, bytes.fromhex(hexkey))
+            except ValueError as e:
+                print(f"Error: invalid --authority-key {spec!r}: {e}", file=sys.stderr)
+                sys.exit(1)
+        with open(token_path) as tf:
+            claim = AuthorityClaim.from_json(tf.read())
+        auth_result = verifier.verify(claim)
+        if not auth_result.valid:
+            print(f"Error: authority token rejected: {auth_result.reason}", file=sys.stderr)
+            sys.exit(1)
+        interpreter.set_verified_authority(auth_result.authority)
+
+    # Proof signing: give the runtime an Ed25519 key so decision proofs are
+    # non-repudiable (required by hardened mode).
+    sign_spec = getattr(args, "sign_proofs", None)
+    if sign_spec and runtime is not None:
+        kid, _, hexseed = sign_spec.partition(":")
+        try:
+            runtime.set_ed25519_signing_key(kid, bytes.fromhex(hexseed))
+        except ValueError as e:
+            print(f"Error: invalid --sign-proofs {sign_spec!r}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if getattr(args, "hardened", False):
+        interpreter.set_hardened(True)
 
     try:
         result = interpreter.interpret(ast, mode=args.thirst_level)
@@ -464,6 +509,30 @@ def cmd_build(args):
     target = args.target
     base = os.path.splitext(args.file)[0]
 
+    # Governance-loss guard: every current build target (JS, LLVM, Pyodide)
+    # drops the governed runtime, so a governed module cannot enforce its
+    # policy in the emitted artifact. Refuse by default; require an explicit
+    # opt-in that is recorded in the manifest.
+    governed = bool(ast.header and ast.header.mode == "governed")
+    governance_loss = False
+    if governed:
+        if not args.allow_governance_loss:
+            print(
+                f"Error: refusing to build governed module to '{target}': "
+                "this target drops the governed runtime, losing policy "
+                "enforcement. Re-run with --allow-governance-loss "
+                "(ideally with --emit-manifest) to proceed.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        governance_loss = True
+        print(
+            f"Warning: governance loss — building governed module '{args.file}'"
+            f" to '{target}' drops the governed runtime; the emitted artifact "
+            "does NOT enforce policy.",
+            file=sys.stderr,
+        )
+
     if target.startswith("llvm-"):
         output_path = _build_llvm(ast, base, target)
         print(f"Built: {output_path}")
@@ -481,7 +550,8 @@ def cmd_build(args):
         print(f"Built: {output_path}")
 
     if args.emit_manifest:
-        _emit_manifest(ast, args.file)
+        _emit_manifest(ast, args.file, target=target,
+                       governance_loss=governance_loss)
 
 
 def _transpile_to_js(ast) -> str:
@@ -603,7 +673,7 @@ class _LLVMExpr:
         if isinstance(expr, BoolLiteral):
             return "1" if expr.value else "0"
         if isinstance(expr, Identifier):
-            return env.get(expr.name, "0")
+            return str(env.get(expr.name, "0"))
         if isinstance(expr, UnaryOp):
             val = self.emit(expr.operand, env)
             reg = self._tmp()
@@ -780,13 +850,17 @@ def _build_pyodide(source: str, base: str) -> str:
     return out_path
 
 
-def _emit_manifest(ast, file_path):
+def _emit_manifest(ast, file_path, target=None, governance_loss=False):
     """Emit governance manifest."""
     import json
     manifest = {
         "file": file_path,
         "mode": "core",
         "functions": [],
+        "build": {
+            "target": target,
+            "governance_loss": governance_loss,
+        },
         "governance_policy": {
             "tarl": {},
             "shadow_thirst": {},

@@ -372,8 +372,8 @@ class PolicyComposer:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _require(self, name: str, from_name: str) -> TarlPolicy:
-        if name not in self._policies:
+    def _require(self, name: str | None, from_name: str) -> TarlPolicy:
+        if name is None or name not in self._policies:
             raise CompositionError(
                 f"Policy {from_name!r} references unknown policy "
                 f"{name!r}. Registered: {sorted(self._policies.keys())}"

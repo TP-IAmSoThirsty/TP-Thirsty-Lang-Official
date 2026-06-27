@@ -53,7 +53,7 @@ class Lexer:
         self.col += 1
         return True
 
-    def _add_token(self, token_type: TokenType, lexeme: str = None):
+    def _add_token(self, token_type: TokenType, lexeme: str | None = None):
         text = lexeme if lexeme is not None else self.source[self.start:self.current]
         self.tokens.append(Token(token_type, text, self.line, self.start - self.line_start + 1))
 

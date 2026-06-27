@@ -15,6 +15,9 @@ import os
 import sys
 import unittest
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))  # noqa: E402
 
 from utf.tarl.core import PolicyParser  # noqa: E402
@@ -36,6 +39,7 @@ _POLICY_TEXT = (
 )
 
 _SECRET = b"thirsty-test-secret-key-32bytes!"
+_ED25519_PRIVATE_BYTES = bytes(range(32))
 
 
 def _runtime(policy_text: str = _POLICY_TEXT) -> TarlRuntime:
@@ -48,6 +52,21 @@ def _signed_runtime(policy_text: str = _POLICY_TEXT) -> TarlRuntime:
     rt = TarlRuntime(policy)
     rt.set_signing_key("k1", _SECRET)
     return rt
+
+
+def _ed25519_runtime(policy_text: str = _POLICY_TEXT) -> TarlRuntime:
+    policy = PolicyParser.parse(policy_text)
+    rt = TarlRuntime(policy)
+    rt.set_ed25519_signing_key("ed1", _ED25519_PRIVATE_BYTES)
+    return rt
+
+
+def _ed25519_public_bytes() -> bytes:
+    private_key = Ed25519PrivateKey.from_private_bytes(_ED25519_PRIVATE_BYTES)
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
 
 
 def _make_proof(**overrides) -> TarlProof:
@@ -209,6 +228,13 @@ class TestSetSigningKey(unittest.TestCase):
         rt.set_signing_key("k2", b"s2")
         self.assertEqual(len(rt._signing_keys), 2)
 
+    def test_ed25519_key_stored(self):
+        rt = _runtime()
+        rt.set_ed25519_signing_key("ed1", _ED25519_PRIVATE_BYTES)
+        self.assertIn("ed1", rt._ed25519_signing_keys)
+        self.assertEqual(rt._signing_key_id, "ed1")
+        self.assertEqual(rt._signing_alg, "ed25519")
+
 
 # ── TarlRuntime.evaluate_with_proof ──────────────────────────────────────────
 
@@ -308,6 +334,12 @@ class TestEvaluateWithProof(unittest.TestCase):
         _, proof = rt.evaluate_with_proof({"role": "admin"})
         self.assertEqual(proof.key_id, "k1")
 
+    def test_ed25519_signature_present_with_key(self):
+        rt = _ed25519_runtime()
+        _, proof = rt.evaluate_with_proof({"role": "admin"})
+        self.assertTrue(proof.signature.startswith("ed25519:"))
+        self.assertEqual(proof.key_id, "ed1")
+
     def test_different_contexts_different_context_hash(self):
         rt = _signed_runtime()
         _, p1 = rt.evaluate_with_proof({"role": "admin"})
@@ -372,6 +404,31 @@ class TestProofVerifier(unittest.TestCase):
 
     def test_signed_proof_invalid_without_key(self):
         rt = _signed_runtime()
+        _, proof = rt.evaluate_with_proof({"role": "admin"})
+        result = ProofVerifier().verify(proof)
+        self.assertFalse(result.valid)
+
+    def test_ed25519_signed_proof_valid_with_public_key(self):
+        rt = _ed25519_runtime()
+        _, proof = rt.evaluate_with_proof({"role": "admin"})
+        v = ProofVerifier().add_ed25519_key("ed1", _ed25519_public_bytes())
+        result = v.verify(proof)
+        self.assertTrue(result.valid)
+
+    def test_ed25519_signed_proof_invalid_with_wrong_public_key(self):
+        rt = _ed25519_runtime()
+        _, proof = rt.evaluate_with_proof({"role": "admin"})
+        wrong_public = Ed25519PrivateKey.generate().public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        v = ProofVerifier().add_ed25519_key("ed1", wrong_public)
+        result = v.verify(proof)
+        self.assertFalse(result.valid)
+        self.assertFalse(result.checks["signature"])
+
+    def test_ed25519_signed_proof_invalid_without_public_key(self):
+        rt = _ed25519_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
         result = ProofVerifier().verify(proof)
         self.assertFalse(result.valid)
@@ -489,6 +546,16 @@ class TestTamperDetection(unittest.TestCase):
         proof = self._signed_proof()
         proof.matched_condition = "1 == 1"
         result = self._verifier().verify(proof)
+        self.assertFalse(result.valid)
+
+    def test_ed25519_tampered_verdict_fails(self):
+        rt = _ed25519_runtime()
+        _, proof = rt.evaluate_with_proof({"role": "admin"})
+        proof.verdict = TarlVerdict.DENY
+        verifier = ProofVerifier().add_ed25519_key(
+            "ed1", _ed25519_public_bytes()
+        )
+        result = verifier.verify(proof)
         self.assertFalse(result.valid)
 
 

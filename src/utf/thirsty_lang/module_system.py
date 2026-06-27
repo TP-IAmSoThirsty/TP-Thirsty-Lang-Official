@@ -8,10 +8,72 @@ import os
 import random
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 # Module cache: store resolved modules by import path
 ModuleCache: dict[str, object] = {}
+
+
+# ============================================================
+# Sensitive stdlib capability metadata (single source of truth)
+# ============================================================
+#
+# Maps each sensitive stdlib namespace to the explicit capability *action* of
+# every side-effecting function it exposes. Actions are constrained to a closed
+# vocabulary — {"read", "write", "network", "execute"} — so the governed-runtime
+# capability broker can gate imported stdlib calls without per-call guesswork.
+# The interpreter wraps these callables in governed mode and routes each through
+# the capability gate with the action declared here.
+SENSITIVE_STDLIB_CAPABILITIES: dict[str, dict[str, str]] = {
+    "thirst::fs": {
+        "read_file": "read",
+        "exists": "read",
+        "list_dir": "read",
+        "write_file": "write",
+        "mkdir": "write",
+        "remove": "write",
+    },
+    "thirst::http": {
+        "get": "network",
+        "post": "network",
+        "put": "network",
+        "delete": "network",
+    },
+    "thirst::net": {
+        "tcp_connect": "network",
+        "tcp_listen": "network",
+        "udp_send": "network",
+    },
+    "thirst::env": {
+        "get": "read",
+        "all": "read",
+        "set": "write",
+    },
+    "thirst::process": {
+        "run": "execute",
+        "exit": "execute",
+        "args": "read",
+        "pid": "read",
+    },
+    "thirst::log": {
+        "info": "write",
+        "warn": "write",
+        "error": "write",
+        "debug": "write",
+    },
+    "thirst::test": {
+        "describe": "write",
+        "it": "write",
+    },
+    "thirst::sqlite": {
+        "connect": "write",
+        "query": "read",
+        "execute": "write",
+        "close": "write",
+    },
+}
 
 
 # ============================================================
@@ -200,7 +262,7 @@ def _make_http_module() -> dict:
     def get(url: str) -> str:
         try:
             with urllib.request.urlopen(url, timeout=10) as response:
-                return response.read().decode()
+                return str(response.read().decode())
         except Exception as e:
             return f"HTTP GET error: {e}"
 
@@ -210,7 +272,7 @@ def _make_http_module() -> dict:
             req = urllib.request.Request(url, data=data_bytes,
                                           headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.read().decode()
+                return str(response.read().decode())
         except Exception as e:
             return f"HTTP POST error: {e}"
 
@@ -221,7 +283,7 @@ def _make_http_module() -> dict:
                                           headers={"Content-Type": "application/json"},
                                           method="PUT")
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.read().decode()
+                return str(response.read().decode())
         except Exception as e:
             return f"HTTP PUT error: {e}"
 
@@ -229,7 +291,7 @@ def _make_http_module() -> dict:
         try:
             req = urllib.request.Request(url, method="DELETE")
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.read().decode()
+                return str(response.read().decode())
         except Exception as e:
             return f"HTTP DELETE error: {e}"
 
@@ -321,7 +383,7 @@ def _make_test_module() -> dict:
     def assert_true(v: object) -> None:
         assert v, f"AssertionError: {v!r} is not truthy"
 
-    def assert_raises(fn: callable, *args, **kwargs) -> None:
+    def assert_raises(fn: Callable[..., Any], *args, **kwargs) -> None:
         try:
             fn(*args, **kwargs)
             raise AssertionError("Expected exception but none raised")
@@ -351,13 +413,13 @@ def _make_collections_module() -> dict:
     """thirst::collections — Collection operations."""
     from functools import reduce as _reduce
 
-    def map(fn: callable, lst: list) -> list:
+    def map(fn: Callable[..., Any], lst: list) -> list:
         return [fn(x) for x in lst]
 
-    def filter(fn: callable, lst: list) -> list:
+    def filter(fn: Callable[..., Any], lst: list) -> list:
         return [x for x in lst if fn(x)]
 
-    def reduce(fn: callable, lst: list, init: object = None) -> object:
+    def reduce(fn: Callable[..., Any], lst: list, init: object = None) -> object:
         if init is not None:
             return _reduce(fn, lst, init)
         return _reduce(fn, lst) if lst else None
@@ -551,18 +613,18 @@ STDLIB_MODULES = {
 # Builtin Functions
 # ============================================================
 
-BUILTINS = {
+BUILTINS: dict[str, Callable[..., Any]] = {
     "length": lambda x: len(x) if hasattr(x, '__len__') else 0,
     "contains": lambda x, y: y in x if hasattr(x, '__contains__') else False,
     "split": lambda s, sep=None: s.split(sep) if isinstance(s, str) else [],
     "abs": lambda x: abs(x) if hasattr(x, '__abs__') else 0,
     "min": lambda *args: min(args) if args else 0,
     "max": lambda *args: max(args) if args else 0,
-    "push": lambda r, v: (r.append(v), len(r))[-1] if isinstance(r, list) else 0,
+    "push": lambda r, v: (r.append(v), len(r))[-1] if isinstance(r, list) else 0,  # type: ignore[func-returns-value]
     "pop": lambda r: r.pop() if isinstance(r, list) and r else None,
     "size": lambda x: len(x) if hasattr(x, '__len__') else 0,
     "get": lambda x, i: x[i] if hasattr(x, '__getitem__') else None,
-    "flood": lambda r, v: (r.append(v), r)[-1] if isinstance(r, list) else r,
+    "flood": lambda r, v: (r.append(v), r)[-1] if isinstance(r, list) else r,  # type: ignore[func-returns-value]
     "condense": lambda q: q.get("value") if isinstance(q, dict) and "value" in q else None,
     "evaporate": lambda q: q.pop("value") if isinstance(q, dict) and "value" in q else None,
     "strain": lambda x: x,
@@ -575,17 +637,18 @@ BUILTINS = {
 # Lockfile-aware Module Resolution
 # ============================================================
 
-def load_lockfile(cwd: str = ".") -> dict:
+def load_lockfile(cwd: str = ".") -> dict[str, Any]:
     """
     Load and parse thirsty.lock from the given directory.
-    Returns the lockfile dict, or an empty dict if not found.
+    Returns the lockfile dict, or an empty dict if not found or malformed.
     """
     lock_path = os.path.join(cwd, "thirsty.lock")
     if not os.path.exists(lock_path):
         return {}
     try:
         with open(lock_path) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -680,7 +743,7 @@ def resolve_import(path_str: str, locked: bool = False) -> object:
     raise ImportError(f"Module not found: {path_str}")
 
 
-def get_builtin(name: str) -> callable:
+def get_builtin(name: str) -> Callable[..., Any]:
     """Get a builtin function by name."""
     if name in BUILTINS:
         return BUILTINS[name]

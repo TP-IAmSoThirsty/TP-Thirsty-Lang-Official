@@ -75,7 +75,7 @@ class TSCGParser:
 
     def _tokenize(self):
         """Tokenize the input text."""
-        tokens = []
+        tokens: list[tuple[str, str | None]] = []
         i = 0
         while i < len(self.text):
             c = self.text[i]

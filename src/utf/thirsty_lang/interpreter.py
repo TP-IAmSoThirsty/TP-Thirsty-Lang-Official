@@ -4,6 +4,7 @@ Evaluates Thirsty-Lang AST programs with full environment scoping,
 governance enforcement, tail-call optimization, and async support.
 """
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from utf.thirsty_lang.ast import (
     ArmorExpr,
@@ -60,7 +61,10 @@ from utf.thirsty_lang.ast import (
     VariableDecl,
     WhileStmt,
 )
-from utf.thirsty_lang.module_system import resolve_import
+from utf.thirsty_lang.module_system import (
+    SENSITIVE_STDLIB_CAPABILITIES,
+    resolve_import,
+)
 from utf.thirsty_lang.token import TokenType
 
 
@@ -93,7 +97,7 @@ class GovernanceViolation(Exception):
 class Environment:
     """Scoped variable storage."""
 
-    def __init__(self, parent: 'Environment' = None):
+    def __init__(self, parent: 'Environment | None' = None):
         self.parent = parent
         self.vars: dict[str, object] = {}
         self.mutable: dict[str, bool] = {}
@@ -121,7 +125,7 @@ class Environment:
         raise NameError(f"Undefined variable: '{name}'")
 
     def has(self, name: str) -> bool:
-        return name in self.vars or (self.parent and self.parent.has(name))
+        return name in self.vars or bool(self.parent and self.parent.has(name))
 
     def enter_scope(self) -> 'Environment':
         return Environment(self)
@@ -135,8 +139,8 @@ class FountainInstance:
 
     def __init__(self, cls_decl: ClassDecl, env: Environment):
         self.cls_decl = cls_decl
-        self.fields = {}
-        self.methods = {}
+        self.fields: dict[str, Any] = {}
+        self.methods: dict[str, Any] = {}
         for fname, _ in cls_decl.fields:
             self.fields[fname] = None
         for method in cls_decl.methods:
@@ -168,6 +172,13 @@ class Interpreter:
         # Governance wiring (Part A): optional policy engine + authority context.
         self.tarl_runtime = None
         self.authority = None
+        # Authority provenance: a bare string authority is self-asserted
+        # (authenticated=False, no grants); a verified signed claim sets these.
+        self.authority_authenticated = False
+        self.authority_grants: tuple[str, ...] = ()
+        # Hardened posture: when True, governed gates additionally require an
+        # authenticated authority and Ed25519-signed proofs, or they fail closed.
+        self.hardened = False
         self._last_proof = None
         self._register_builtins()
         if self.opt_level >= 2:
@@ -195,27 +206,62 @@ class Interpreter:
             "abs": lambda x: abs(x) if hasattr(x, '__abs__') else 0,
             "min": lambda *args: min(args) if args else 0,
             "max": lambda *args: max(args) if args else 0,
-            "push": lambda r, v: (r.append(v), len(r))[-1] if isinstance(r, list) else 0,
+            "push": lambda r, v: (r.append(v), len(r))[-1] if isinstance(r, list) else 0,  # type: ignore[func-returns-value]
             "pop": lambda r: r.pop() if isinstance(r, list) and r else None,
             "size": lambda x: len(x) if hasattr(x, '__len__') else 0,
             "get": lambda x, i: x[i] if hasattr(x, '__getitem__') else None,
-            "flood": lambda r, v: (r.append(v), r)[-1] if isinstance(r, list) else r,
+            "flood": lambda r, v: (r.append(v), r)[-1] if isinstance(r, list) else r,  # type: ignore[func-returns-value]
             "condense": lambda q: q.get("value") if isinstance(q, dict) and "value" in q else None,
             "evaporate": lambda q: q.pop("value") if isinstance(q, dict) and "value" in q else None,
             "strain": lambda x: x,
             "transmute": lambda x, t: x,
             "distill": lambda x: x,
-            "print": lambda *args: print(*args) or args[-1] if args else None,
-            "pour": lambda *args: print(*args) or (args[-1] if args else None),
+            "print": self._builtin_print,
+            "pour": self._builtin_pour,
         }
         for name, func in builtins_map.items():
             self.env.define(name, func, is_mut=False)
 
-    def interpret(self, ast: Program, mode: str = "core") -> object:
-        """Interpret an entire Program AST."""
+    def _builtin_print(self, *args):
+        self._gate_capability("write", "stdout")
+        print(*args)
+        return args[-1] if args else None
+
+    def _builtin_pour(self, *args):
+        self._gate_capability("write", "stdout")
+        print(*args)
+        return args[-1] if args else None
+
+    def interpret(self, ast: Program, mode: str = "core",
+                  force_mode: bool = False) -> object:
+        """Interpret an entire Program AST.
+
+        ``force_mode`` keeps ``mode`` even when the program declares a different
+        one in its header — used when importing a ``.thirsty`` module under a
+        governed caller, so the imported module's own ``: core`` header cannot
+        downgrade out of the caller's governance.
+        """
         self.mode = mode
-        if ast.header:
+        if ast.header and not force_mode:
             self.mode = ast.header.mode
+        # Fail-closed: a governed program the parser flagged as malformed must
+        # not execute. The parser already discarded its statements; refuse the
+        # whole program with a denial proof rather than running an empty body.
+        if self.mode == "governed" and getattr(ast, "parse_failed", False):
+            from utf.tarl.spec import TarlVerdict
+            proof = self._make_decision_proof(
+                source="<fail-closed: governed module failed to parse>",
+                context={"action": "execute", "reason": "parse_failed"},
+                verdict=TarlVerdict.DENY, matched_condition="",
+                trace=[{"kind": "fail-closed", "action": "execute",
+                        "reason": "governed module had parse errors; "
+                                  "execution refused"}])
+            self._last_proof = proof
+            raise GovernanceViolation(
+                "<module>",
+                "fail-closed: governed module failed to parse; refusing to "
+                "execute recovered statements",
+                proof)
         result = None
         try:
             for stmt in ast.stmts:
@@ -249,7 +295,7 @@ class Interpreter:
         else:
             return self._execute_impl(stmt)
 
-    def _evaluate(self, expr: Expr) -> object:
+    def _evaluate(self, expr: Expr) -> Any:
         """Evaluate an expression and return its value."""
         if self.debug_mode:
             try:
@@ -458,7 +504,12 @@ class Interpreter:
             return
         from utf.tarl.spec import TarlVerdict
         ctx = {"action": action, "target": str(target),
-               "authority": self.authority or ""}
+               **self._authority_context()}
+        # Hardened-mode prerequisites (authenticated authority + Ed25519 proofs)
+        # fail closed before any policy is consulted.
+        hardened_violation = self._hardened_precheck(action, target)
+        if hardened_violation is not None:
+            raise hardened_violation
         # Fail-closed: governed but no policy engine/authority to grant it.
         if self.tarl_runtime is None or self.authority is None:
             proof = self._make_decision_proof(
@@ -474,7 +525,24 @@ class Interpreter:
                 "fail-closed: governed mode requires a policy engine to "
                 "authorize this capability (run with --policy)",
                 proof)
-        decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+        try:
+            decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+        except GovernanceViolation:
+            raise
+        except Exception as exc:
+            # Resource exhaustion / evaluator failure must DENY, never fail open
+            # (C037), and must surface as a governance denial that spillage
+            # cannot swallow — not a raw exception.
+            proof = self._make_decision_proof(
+                source="<fail-closed: policy evaluation error>",
+                context=ctx, verdict=TarlVerdict.DENY, matched_condition="",
+                trace=[{"kind": "fail-closed", "action": action,
+                        "target": str(target),
+                        "reason": f"policy evaluation error: {exc}"}])
+            self._last_proof = proof
+            raise GovernanceViolation(
+                f"{action} {target}",
+                f"fail-closed: policy evaluation error: {exc}", proof) from exc
         self._last_proof = proof
         if decision.verdict != TarlVerdict.ALLOW:
             raise GovernanceViolation(
@@ -482,13 +550,105 @@ class Interpreter:
                 decision.reason or f"capability denied ({decision.verdict})",
                 proof)
 
+    def _wrap_imported_module_capabilities(
+        self, module_path: str, module: object
+    ) -> Any:
+        """Wrap sensitive stdlib module functions with runtime capability gates.
+
+        Capability actions come from the single-source-of-truth table
+        ``SENSITIVE_STDLIB_CAPABILITIES`` in ``module_system`` so every sensitive
+        callable carries an explicit ``read``/``write``/``network``/``execute``
+        action; the gate routing here only consumes that metadata.
+        """
+        if self.mode != "governed" or not isinstance(module, dict):
+            return module
+
+        policy = SENSITIVE_STDLIB_CAPABILITIES.get(module_path, {})
+        if not policy:
+            return module
+
+        wrapped = dict(module)
+        for name, action in policy.items():
+            fn = wrapped.get(name)
+            if not callable(fn):
+                continue
+
+            def guarded(*args, __fn=fn, __name=name, __action=action):
+                target_detail = args[0] if args else ""
+                target = f"{module_path}.{__name}"
+                if target_detail != "":
+                    target = f"{target}:{target_detail}"
+                self._gate_capability(__action, target)
+                return __fn(*args)
+
+            wrapped[name] = guarded
+        return wrapped
+
+    def _import_thirsty_file(self, path: str) -> dict:
+        """Import a ``.thirsty`` source file under the caller's governance.
+
+        The detached, core-mode interpreter that ``resolve_import`` uses for
+        file imports is a governance bypass: an imported module's top-level
+        effects run ungoverned, and the function closures it returns execute
+        ungoverned when later called from governed code. Instead, run the
+        imported source on a *child* interpreter that inherits this caller's
+        policy engine and authority and is forced into governed mode, so
+
+          * top-level gated effects (e.g. ``pour``) hit the capability gate
+            during import, and
+          * the returned function closures gate when invoked from governed code.
+
+        Returns the imported module's new top-level bindings as a dict (the same
+        shape stdlib modules use). The governed path deliberately bypasses the
+        global ``ModuleCache`` to avoid leaking governed-bound closures into a
+        later core-mode import of the same path.
+        """
+        import os
+
+        from utf.thirsty_lang.lexer import Lexer
+        from utf.thirsty_lang.parser import Parser
+        if not os.path.exists(path):
+            raise ImportError(f"File not found: {path}")
+        with open(path) as f:
+            source = f.read()
+        parser = Parser(Lexer(source).lex())
+        ast = parser.parse()
+        if parser.errors:
+            raise ImportError(f"Failed to import '{path}': {parser.errors[0]}")
+
+        child = Interpreter()
+        child.attach_tarl(self.tarl_runtime)
+        child.set_authority(self.authority)
+        baseline = set(child.env.vars)  # builtins to exclude from the module
+        # Force governed mode regardless of the imported module's own header so
+        # its effects are gated by *this* caller's policy, not its declaration.
+        child.interpret(ast, mode="governed", force_mode=True)
+        return {
+            name: value
+            for name, value in child.env.vars.items()
+            if name not in baseline
+        }
+
     def _execute_import(self, stmt: ImportStmt) -> object:
         self._gate_capability("import", stmt.module_path)
         try:
-            module = resolve_import(stmt.module_path)
+            module: object
+            if (self.mode == "governed"
+                    and stmt.module_path.endswith(".thirsty")):
+                module = self._import_thirsty_file(stmt.module_path)
+            else:
+                module = resolve_import(stmt.module_path)
+            module = self._wrap_imported_module_capabilities(
+                stmt.module_path, module
+            )
             alias = stmt.alias or stmt.module_path
             self.env.define(alias, module, is_mut=False)
             return module
+        except GovernanceViolation:
+            # A denied effect during imported-module execution is a governance
+            # decision, not an import error — it must propagate, never be
+            # swallowed into a SpillageException that handlers could catch.
+            raise
         except Exception as e:
             raise SpillageException(str(e)) from e
 
@@ -598,9 +758,75 @@ class Interpreter:
         return self
 
     def set_authority(self, authority) -> "Interpreter":
-        """Set the authority context consulted during governed calls."""
+        """Set a *self-asserted* authority (a bare string subject).
+
+        This carries no authenticity: ``authority_authenticated`` stays False and
+        no grants are bound. In hardened mode such an authority cannot pass a
+        gated capability. Use :meth:`set_verified_authority` for a signed
+        credential. Passing a ``VerifiedAuthority`` here is also accepted.
+        """
+        from utf.tarl.authority import VerifiedAuthority
+        if isinstance(authority, VerifiedAuthority):
+            return self.set_verified_authority(authority)
         self.authority = authority
+        self.authority_authenticated = False
+        self.authority_grants = ()
         return self
+
+    def set_verified_authority(self, verified) -> "Interpreter":
+        """Bind an authenticated authority resolved from a signed claim.
+
+        ``verified`` is a ``utf.tarl.authority.VerifiedAuthority``. Its subject,
+        grants, and authenticity flag are injected into every governance context.
+        """
+        self.authority = verified.subject
+        self.authority_authenticated = bool(verified.authenticated)
+        self.authority_grants = tuple(verified.grants)
+        return self
+
+    def set_hardened(self, hardened: bool = True) -> "Interpreter":
+        """Enable the hardened posture (authenticated authority + Ed25519 proofs
+        required at every governed gate, else fail closed)."""
+        self.hardened = hardened
+        return self
+
+    def _authority_context(self) -> dict:
+        """Authority fields merged into every governance evaluation context."""
+        return {
+            "authority": self.authority or "",
+            "authority_subject": self.authority or "",
+            "authority_authenticated": self.authority_authenticated,
+            "authority_grants": list(self.authority_grants),
+        }
+
+    def _hardened_precheck(self, action: str, target: str):
+        """Hardened-mode gate prerequisites, evaluated before policy routing.
+
+        Returns a fail-closed ``GovernanceViolation`` to raise, or None when the
+        prerequisites hold. Enforces: an authenticated authority, and a runtime
+        configured to emit Ed25519-signed proofs (non-repudiable audit).
+        """
+        if not self.hardened:
+            return None
+        from utf.tarl.spec import TarlVerdict
+        reason = None
+        if not self.authority_authenticated:
+            reason = ("hardened mode requires an authenticated (signed) "
+                      "authority; a self-asserted authority is not sufficient")
+        elif getattr(self.tarl_runtime, "_signing_alg", "") != "ed25519":
+            reason = ("hardened mode requires Ed25519-signed proofs; configure "
+                      "an Ed25519 signing key on the runtime")
+        if reason is None:
+            return None
+        proof = self._make_decision_proof(
+            source="<fail-closed: hardened-mode prerequisite>",
+            context={**self._authority_context(), "action": action,
+                     "target": str(target)},
+            verdict=TarlVerdict.DENY, matched_condition="",
+            trace=[{"kind": "fail-closed", "action": action,
+                    "target": str(target), "reason": reason}])
+        self._last_proof = proof
+        return GovernanceViolation(f"{action} {target}", reason, proof)
 
     def _execute_governed_function_decl(self, stmt: GovernedFunctionDecl):
         """Define a top-level governed function with full contract enforcement."""
@@ -731,8 +957,15 @@ class Interpreter:
             # TARL policy routing (deny-by-default access control). A policy
             # proof supersedes the contract proof as the boundary certificate.
             if self.tarl_runtime is not None and self.authority is not None:
+                # Hardened-mode prerequisites fail closed before policy routing.
+                action_name = decl.name if decl is not None else "<call>"
+                hardened_violation = self._hardened_precheck(
+                    action_name, action_name)
+                if hardened_violation is not None:
+                    return (False, hardened_violation.reason,
+                            hardened_violation.proof)
                 policy_ctx = dict(context)
-                policy_ctx["authority"] = self.authority
+                policy_ctx.update(self._authority_context())
                 if decl is not None:
                     policy_ctx.setdefault("action", decl.name)
                 decision, proof = self.tarl_runtime.evaluate_with_proof(
@@ -765,7 +998,7 @@ class Interpreter:
         finally:
             self.env = old_env
 
-    def _evaluate_impl(self, expr: Expr) -> object:
+    def _evaluate_impl(self, expr: Expr) -> Any:
         """Evaluate an expression and return its value."""
         if isinstance(expr, IntLiteral):
             return expr.value
@@ -939,16 +1172,18 @@ class Interpreter:
         raise TypeError(f"Cannot instantiate non-callable: {expr.class_name}")
 
     def _evaluate_pipeline(self, expr: PipelineExpr) -> object:
-        result = None
-        for i, step in enumerate(expr.steps):
-            if i == 0:
-                result = self._evaluate_impl(step)
-            else:
-                if callable(step):
-                    result = step(result)
-                else:
-                    result = self._evaluate_impl(step)
-        return result
+        """TSCG pipeline ``left -> right``: feed the left value into the right
+        operand when it is callable (same shape as the ``|`` pipe operator).
+
+        ``PipelineExpr`` is a binary node (``left``/``right``); an earlier
+        version walked a non-existent ``.steps`` list and raised AttributeError
+        on any ``->`` expression.
+        """
+        left = self._evaluate_impl(expr.left)
+        right = self._evaluate_impl(expr.right)
+        if callable(right):
+            return right(left)
+        return right
 
     def _evaluate_combine(self, expr: CombineExpr) -> object:
         left = self._evaluate_impl(expr.left)

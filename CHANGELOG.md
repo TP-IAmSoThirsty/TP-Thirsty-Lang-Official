@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-27
+
+### Added — Hardened-runtime acceptance bar (C022–C050)
+
+Closes the remaining critical/high threat-model challenges so the governed
+runtime meets its own hardened-runtime acceptance bar. All new behavior is
+opt-in and backward compatible.
+
+- **Authority provenance (C027–C028)** — `utf.tarl.authority`: Ed25519-signed
+  `AuthorityClaim` minted by an `AuthorityIssuer` and checked by an
+  `AuthorityVerifier`. `Interpreter.set_hardened()` fails closed unless the
+  authority is authenticated *and* the runtime signs proofs with Ed25519. A bare
+  `--authority` string grants nothing in hardened mode. New `thirsty run` flags:
+  `--hardened`, `--authority-token`, `--authority-key`, `--sign-proofs`.
+- **Context schema validation (C045–C046)** — `utf.tarl.schema.ContextSchema`;
+  `TarlRuntime.set_context_schema` fails closed on missing/type-confused fields
+  before any rule runs.
+- **Replay/freshness/revocation (C023–C024)** — `ProofVerifier` gains
+  `expected_context`, `max_age_seconds`, `revoked_policy_hashes`, and a
+  `ReplayGuard`. `tarl verify` gains `--max-age` and `--revoked-policy-hash`.
+- **Tamper-evident audit (C022/C026/C049)** — `TarlAuditArchive` hash-links every
+  record; `verify_chain()` detects edits, deletions, and reordering. New
+  `tarl audit verify-chain`.
+- **Capability broker (C033/C040/C041)** — `utf.tarl.broker.CapabilityBroker`:
+  one fail-closed mediation point for FFI/native, subprocess, file, network, and
+  MCP/agent tool adapters, with `require_path` confining filesystem targets.
+- **Fail-closed under failure (C037–C038)** — evaluator errors surface as
+  non-swallowable governance denials; `TarlRuntime.set_require_audit` downgrades
+  to DENY when a required proof cannot persist.
+- **Path confinement (C042)** — `utf.tarl.pathguard.PathGuard` confines canonical
+  (symlink-resolved) paths to allowed roots.
+- **Trusted clock (C043)** — `utf.tarl.clock`: `TimeAuthority`/`TrustedClock`;
+  `TarlRuntime.set_clock` evaluates temporal windows against verified signed time.
+- **Policy lint + quorum (C039/C050)** — `utf.tarl.linter.lint_policy`
+  (`tarl lint`) flags broad/ungated ALLOW; `utf.tarl.escalation.QuorumResolver`
+  upgrades ESCALATE to ALLOW only on distinct signed approvals.
+- CI now runs `mypy -p utf` as a type gate.
+
+### Added — Offensive threat model
+
+- Added `docs/THREAT_MODEL.md`, an offensive adversary model and challenge
+  catalog for using Thirsty-Lang as a governance AI substrate. The catalog maps
+  current proof/gate behavior to evidence and marks replay, downgrade,
+  filesystem, network, subprocess, FFI, agent-tool, archive-tamper, and context
+  poisoning defenses as required hardening work where not yet implemented.
+- Linked the threat model from `SECURITY.md`.
+
+### Added — Non-repudiable proof signatures
+
+- `TarlRuntime.set_ed25519_signing_key()` now signs `TarlProof` certificates
+  with Ed25519, and `ProofVerifier.add_ed25519_key()` verifies them with only
+  the public key. Legacy HMAC-SHA256 proof signing remains supported for
+  compatibility, but docs now distinguish symmetric MACs from non-repudiable
+  signatures.
+- `tarl verify` accepts `--ed25519-key ID:HEX_PUBLIC_KEY` for CLI verification
+  of Ed25519-signed proof JSON.
+
+### Fixed — Governed stdout bypass
+
+- The callable `print(...)` builtin now routes through the same governed-mode
+  `write/stdout` capability gate as the `pour` statement. In governed mode it
+  fails closed without policy authority and records a `TarlProof`; with an
+  attached policy that ALLOWs `action == "write"`, it executes normally.
+- Imported stdlib modules now wrap sensitive callables with capability checks
+  after import. Allowing `action == "import"` no longer implicitly grants
+  filesystem writes, network calls, process execution, environment mutation,
+  logging output, test output, or SQLite operations. The capability/action
+  table is centralized in `module_system.SENSITIVE_STDLIB_CAPABILITIES` so every
+  sensitive callable carries an explicit `read`/`write`/`network`/`execute`
+  action.
+
+### Fixed — Imported `.thirsty` modules ran ungoverned (C035)
+
+- Importing a `.thirsty` source file from a governed module now executes it
+  under the **caller's** governed runtime (policy engine + authority), instead
+  of a detached core-mode interpreter. An imported module's top-level effects
+  are gated during import, and the function closures it exports are gated when
+  later called from governed code. A denial during import surfaces as a
+  `GovernanceViolation` and is not swallowed into `spillage`.
+
+### Fixed — Governed parse errors no longer smuggle statements (C036)
+
+- A `governed` module with any parse error now fails closed: the parser
+  discards all recovered statements and the interpreter refuses to run the
+  program, raising a `GovernanceViolation` with a DENY proof. Non-governed
+  modules keep error recovery. (Member access after `.` also now accepts
+  keyword-like member names such as `log.error`.)
+
+### Added — Strict, opt-in proof verification (C025)
+
+- `ProofVerifier(require_signature=…, allowed_signature_algorithms=…,
+  require_policy_source=…)` can reject unsigned proofs, restrict the accepted
+  signature family (e.g. Ed25519-only, rejecting HMAC), and require a policy
+  source for hash binding. Defaults are unchanged (permissive). `tarl verify`
+  gains `--require-signature` and `--ed25519-only`.
+
+### Added — Governed build artifacts must declare governance loss (C034)
+
+- `thirsty build` refuses to emit a governance-dropping target (`js`, `llvm-*`,
+  `wasm-pyodide`) for a `governed` module by default. `--allow-governance-loss`
+  is required to proceed; it warns on stderr and records
+  `build.governance_loss = true` in the emitted manifest.
+
+### Fixed — `->` pipeline operator crashed at runtime
+
+- `Interpreter._evaluate_pipeline` walked a non-existent `.steps` attribute on
+  the binary `PipelineExpr` node (which has `left`/`right`), so any `->`
+  expression raised `AttributeError`. It now feeds the left value into the right
+  operand (same semantics as the `|` pipe). Added a regression test.
+
+### Changed — Type hygiene and PEP 561
+
+- The package now ships a `py.typed` marker and is clean under `mypy`. The
+  canonical, flag-free invocation is `mypy -p utf` (configured via `mypy_path`
+  + `explicit_package_bases` in `[tool.mypy]`, with a `z3.*` override for the
+  optional, stub-less `analysis` extra): **0 errors across 42 modules**.
+- Fixes include: removing the `_z3 = None`/`import z3` type-confusion in
+  `analyzer.py` and `convergence.py`; replacing `callable` used as a type
+  annotation with `Callable[..., Any]`; eliminating implicit-`Optional`
+  defaults; giving the parser's expression methods proper AST return types;
+  annotating containers (`_VERDICT_RANK`, `TYPE_NAME_MAP`, token lists, scope
+  walkers); and coercing `Any`-typed returns (`json.loads`, sqlite rows) at
+  trust boundaries. Behavior is unchanged.
+
+### Fixed — Z3 analysis heap corruption under concurrency
+
+- The LSP runs coverage/shadow analysis in a daemon thread while the main
+  thread also drives z3, whose Python bindings share a single, non-thread-safe
+  global context. Cyclic GC could call `Z3_dec_ref` from a thread other than
+  the one using the solver, corrupting the z3 heap (a Windows `0xC0000374` /
+  access-violation crash in `Z3_model_dec_ref`). `PolicyAnalyzer` now serializes
+  every z3 entry point through a process-wide lock and collects z3 garbage
+  inside that lock, so all z3 reference-counting happens on one thread.
+
 ---
 
 ## [0.5.0] - 2026-06-24

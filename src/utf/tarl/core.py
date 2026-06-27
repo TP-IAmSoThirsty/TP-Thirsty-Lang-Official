@@ -21,7 +21,7 @@ Phase 2 — PolicyParser supports:
 """
 import datetime
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from utf.tarl.spec import (
     DEFAULT_DENY,
@@ -146,7 +146,7 @@ class PolicyParser:
         Returns a list of TarlPolicy and TarlPolicySet objects.
         Bare rules (no policy header) accumulate into an 'unnamed' policy.
         """
-        results = []
+        results: list[Any] = []
         current_policy: TarlPolicy | None = None
         current_set: TarlPolicySet | None = None
 
@@ -374,25 +374,25 @@ class PolicyParser:
             # String literals
             elif c == '"':
                 i += 1
-                s = []
+                chars = []
                 while i < n and expr[i] != '"':
                     if expr[i] == "\\" and i + 1 < n:
                         i += 1
-                        s.append({"n": "\n", "t": "\t", "\\": "\\",
-                                  '"': '"'}.get(expr[i], expr[i]))
+                        chars.append({"n": "\n", "t": "\t", "\\": "\\",
+                                      '"': '"'}.get(expr[i], expr[i]))
                     else:
-                        s.append(expr[i])
+                        chars.append(expr[i])
                     i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, "".join(s), i))
+                tokens.append(ExprToken(STRING, "".join(chars), i))
             elif c == "'":
                 i += 1
-                s = []
+                chars = []
                 while i < n and expr[i] != "'":
-                    s.append(expr[i])
+                    chars.append(expr[i])
                     i += 1
                 i += 1
-                tokens.append(ExprToken(STRING, "".join(s), i))
+                tokens.append(ExprToken(STRING, "".join(chars), i))
 
             # Number literals
             elif c.isdigit():
@@ -471,15 +471,22 @@ def _parse_duration(s: str) -> int | None:
     return total if total > 0 else None
 
 
-def _check_policy_temporal(policy: "TarlPolicy") -> Optional["TarlDecision"]:
+def _check_policy_temporal(
+    policy: "TarlPolicy",
+    now: "datetime.datetime | None" = None,
+) -> Optional["TarlDecision"]:
     """
     Check whether a policy is within its declared effective time window.
+
+    ``now`` lets a caller supply a **trusted** time (e.g. a verified signed-time
+    source) instead of the host clock, so a spoofed system clock cannot satisfy a
+    temporal window (C043). Defaults to ``datetime.now(UTC)``.
 
     Returns a TarlDecision when the policy is outside its window (not-yet-active
     or expired/auto-expired), using policy.on_expiry or ESCALATE as the verdict.
     Returns None when the policy is in-window and should be evaluated normally.
     """
-    now = datetime.datetime.now(datetime.UTC)
+    now = now or datetime.datetime.now(datetime.UTC)
     expiry_verdict = policy.on_expiry or TarlVerdict.ESCALATE
 
     def _parse_dt(s: str) -> datetime.datetime | None:
@@ -602,7 +609,7 @@ class SafeExpr:
             raise cls.ParseError(f"Unexpected token: {parser.current()}")
         return bool(cls._eval_node(result, context))
 
-    def __init__(self, tokens: list):
+    def __init__(self, tokens: list[ExprToken]):
         self.tokens = tokens
         self.pos = 0
 
@@ -820,7 +827,7 @@ class SafeExpr:
 
         # Dot-access: walk nested dicts
         if tag == "attr":
-            val = context
+            val: Any = context
             for part in node[1]:
                 if isinstance(val, dict):
                     val = val.get(part)
@@ -974,7 +981,7 @@ class SafeExpr:
 def evaluate_policy(
     context: dict,
     policy_text: str = "",
-    policy: TarlPolicy = None,
+    policy: TarlPolicy | None = None,
 ) -> TarlDecision:
     """
     Evaluate a policy against a context dict.

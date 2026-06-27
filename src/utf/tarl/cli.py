@@ -53,6 +53,39 @@ def main():
         help='HMAC key as key_id:hex_secret (e.g. key1:deadbeef...)',
     )
     verify_parser.add_argument(
+        '--ed25519-key', default=None, metavar='ID:HEX',
+        help='Ed25519 public key as key_id:hex_public_key',
+    )
+    verify_parser.add_argument(
+        '--require-signature', action='store_true',
+        help='Strict: reject unsigned proofs',
+    )
+    verify_parser.add_argument(
+        '--ed25519-only', action='store_true',
+        help='Strict: reject any non-Ed25519 (e.g. HMAC) signature',
+    )
+    verify_parser.add_argument(
+        '--max-age', type=float, default=None, metavar='SECONDS',
+        help='Strict: reject a proof older than SECONDS (freshness)',
+    )
+    verify_parser.add_argument(
+        '--revoked-policy-hash', action='append', default=None, metavar='HASH',
+        help='Reject proofs bound to this policy hash (repeatable)',
+    )
+    verify_parser.add_argument(
+        '--json', '-j', action='store_true', help='Output as JSON'
+    )
+
+    # lint
+    lint_parser = subparsers.add_parser(
+        'lint', help='Lint a policy for over-broad/unsafe grants'
+    )
+    lint_parser.add_argument('policy_file', help='Path to .tarl policy file')
+    lint_parser.add_argument(
+        '--max-severity', choices=['low', 'medium', 'high'], default='low',
+        help='Exit non-zero if any finding meets/exceeds this severity',
+    )
+    lint_parser.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON'
     )
 
@@ -62,6 +95,16 @@ def main():
     )
     audit_sub = audit_parser.add_subparsers(
         dest='audit_command', help='Audit sub-commands'
+    )
+    audit_chain = audit_sub.add_parser(
+        'verify-chain', help='Verify the audit hash chain is intact'
+    )
+    audit_chain.add_argument(
+        '--db', default='tarl_audit.db',
+        help='Path to audit database (default: tarl_audit.db)',
+    )
+    audit_chain.add_argument(
+        '--json', '-j', action='store_true', help='Output as JSON'
     )
     audit_query = audit_sub.add_parser(
         'query', help='Query stored evaluation proofs'
@@ -156,6 +199,8 @@ def main():
         _cmd_parse(args)
     elif args.command == 'verify':
         _cmd_verify(args)
+    elif args.command == 'lint':
+        _cmd_lint(args)
     elif args.command == 'audit':
         _cmd_audit(args)
     elif args.command == 'explain':
@@ -228,13 +273,28 @@ def _cmd_verify(args):
             print(f"Error reading policy: {e}", file=sys.stderr)
             sys.exit(1)
 
-    verifier = ProofVerifier()
+    revoked = getattr(args, "revoked_policy_hash", None)
+    verifier = ProofVerifier(
+        require_signature=getattr(args, "require_signature", False),
+        allowed_signature_algorithms=(
+            {"ed25519"} if getattr(args, "ed25519_only", False) else None
+        ),
+        max_age_seconds=getattr(args, "max_age", None),
+        revoked_policy_hashes=set(revoked) if revoked else None,
+    )
     if args.hmac_key:
         try:
             key_id, _, hex_secret = args.hmac_key.partition(":")
             verifier.add_hmac_key(key_id, bytes.fromhex(hex_secret))
         except ValueError as e:
             print(f"Invalid --hmac-key format: {e}", file=sys.stderr)
+            sys.exit(1)
+    if args.ed25519_key:
+        try:
+            key_id, _, hex_public = args.ed25519_key.partition(":")
+            verifier.add_ed25519_key(key_id, bytes.fromhex(hex_public))
+        except ValueError as e:
+            print(f"Invalid --ed25519-key format: {e}", file=sys.stderr)
             sys.exit(1)
 
     result = verifier.verify(proof, policy_source=policy_source)
@@ -251,13 +311,54 @@ def _cmd_verify(args):
     sys.exit(0 if result.valid else 1)
 
 
+# ── lint ─────────────────────────────────────────────────────────────────────
+
+def _cmd_lint(args):
+    from utf.tarl.linter import lint_passes, lint_policy
+
+    with open(args.policy_file) as f:
+        policy = PolicyParser.parse(f.read())
+    findings = lint_policy(policy)
+
+    if args.json:
+        print(json.dumps([
+            {"rule_index": fi.rule_index, "severity": fi.severity,
+             "code": fi.code, "message": fi.message}
+            for fi in findings
+        ], indent=2))
+    else:
+        if not findings:
+            print("No policy-lint findings.")
+        for fi in findings:
+            print(fi)
+
+    sys.exit(0 if lint_passes(policy, max_severity=args.max_severity) else 1)
+
+
 # ── audit ────────────────────────────────────────────────────────────────────
 
 def _cmd_audit(args):
     from utf.tarl.archive import TarlAuditArchive
 
+    if args.audit_command == 'verify-chain':
+        try:
+            with TarlAuditArchive(args.db) as arc:
+                result = arc.verify_chain()
+        except Exception as e:
+            print(f"Error reading archive: {e}", file=sys.stderr)
+            sys.exit(1)
+        if args.json:
+            print(json.dumps({
+                "valid": result.valid, "length": result.length,
+                "broken_at": result.broken_at, "reason": result.reason,
+            }, indent=2))
+        else:
+            print(result)
+        sys.exit(0 if result.valid else 1)
+
     if args.audit_command != 'query':
-        print("Usage: tarl audit query [options]", file=sys.stderr)
+        print("Usage: tarl audit (query | verify-chain) [options]",
+              file=sys.stderr)
         sys.exit(1)
 
     try:

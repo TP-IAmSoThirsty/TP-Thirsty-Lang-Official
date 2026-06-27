@@ -88,17 +88,33 @@ default-deny decision (`Interpreter._enforce_governance`):
 
    The proof binds the policy hash, the canonical context hash, the matched
    rule, the verdict, and the evaluation trace. It is **unsigned by default**.
-   Signing is opt-in and uses **HMAC-SHA256**, a *symmetric* MAC: it detects
-   tampering only against a holder who does not know the key — anyone holding
-   the key (including the verifier) can forge a valid tag. It is **not** a
-   non-repudiable (asymmetric) signature. The `thirsty run` path emits unsigned
-   proofs. Treat the proof as an integrity/audit record, not as cryptographic
-   attestation of authorship.
+   Two signing modes exist: legacy **HMAC-SHA256**, a *symmetric* MAC that is
+   forgeable by anyone holding the shared key, and **Ed25519**, an asymmetric
+   signature whose verifier needs only the public key. Use Ed25519 when a proof
+   must attest to the signer rather than merely detect tampering by parties
+   without the shared HMAC key. The `thirsty run` path emits unsigned proofs
+   unless the embedding runtime configures a signing key.
 4. **Default** — in `governed` mode, a call that no layer explicitly allowed is
    **denied** (deny-by-default).
 
 A `GovernanceViolation` is a hard floor: `spillage` error handlers do **not**
-catch it, so governed denials cannot be swallowed by user error handling.
+catch it, so governed denials cannot be swallowed by user error handling. This
+includes denials raised while importing a `.thirsty` module: imported modules
+run under the **caller's** governed runtime, so their effects are gated rather
+than executed in a detached, ungoverned interpreter. A `governed` module that
+fails to parse also fails closed — its recovered statements are discarded and
+execution is refused.
+
+For verification, `ProofVerifier` defaults to permissive (an unsigned proof is
+accepted). Hardened deployments can opt in to strict checks —
+`require_signature`, `allowed_signature_algorithms` (e.g. Ed25519-only), and
+`require_policy_source` — exposed on the CLI as
+`tarl verify --require-signature --ed25519-only`.
+
+Building a `governed` module to a target that drops the governed runtime
+(`js`, `llvm-*`, `wasm-pyodide`) is refused by default; `thirsty build
+--allow-governance-loss` is required to proceed and records the loss in the
+emitted manifest.
 
 From the CLI:
 
@@ -114,9 +130,9 @@ routing produced one) and exits non-zero.
 
 ### Roadmap (extended governance)
 
-Future tiers aim to extend governance gates to module imports, task scheduling,
-network operations, filesystem operations, and external interop. These are not
-yet enforced by the interpreter.
+Future tiers aim to extend governance gates to task scheduling, network
+operations, filesystem operations, and external interop. These are not yet
+enforced by the interpreter.
 
 ## Runtime Evaluation
 
@@ -152,7 +168,7 @@ tarl parse policy.tarl
 
 ## Future Enhancements
 
-- **Cryptographic Signatures** — Sign policies to prevent tampering
+- **Cryptographic Policy Signatures** — Sign policies to prevent tampering
 - **Temporal Policies** — Time-based authorization (e.g., "allow 9-5 weekdays only")
 - **Attribute-Based Access Control (ABAC)** — Richer context and condition evaluation
 - **Policy Versioning** — Track policy versions and rollback capability

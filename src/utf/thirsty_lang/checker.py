@@ -2,6 +2,8 @@
 Thirsty-Lang Type Checker / Semantic Analyzer
 Lexical scoping, type checking, governance validation, and error reporting.
 """
+from typing import cast
+
 from utf.thirsty_lang.ast import (
     ArmorExpr,
     ArrayLiteral,
@@ -103,7 +105,7 @@ def _nearest_match(name: str, candidates: list[str], max_dist: int = 3) -> list[
 class Scope:
     """A lexical scope with variable bindings and type information."""
 
-    def __init__(self, parent: 'Scope' = None):
+    def __init__(self, parent: "Scope | None" = None):
         self.parent = parent
         self.bindings: dict[str, dict] = {}  # name -> {type, is_mut, kind}
 
@@ -175,7 +177,7 @@ class Checker:
                     self.errors.append(
                         make_error("E010", span=stmt.span, name=name))
                     continue
-                self.scope.declare(name, {
+                self.scope.declare(stmt.name, {
                     "type": FunctionType([], AnyType()),
                     "is_mut": False, "kind": "function"})
                 self._hoisted.add(name)
@@ -186,7 +188,7 @@ class Checker:
                     self.errors.append(
                         make_error("E010", span=stmt.span, name=name))
                     continue
-                self.scope.declare(name, {
+                self.scope.declare(stmt.name, {
                     "type": AnyType(), "is_mut": False, "kind": "class"})
                 self._hoisted.add(name)
 
@@ -376,7 +378,7 @@ class Checker:
             if info is None:
                 # Check "did you mean?"
                 all_names = list(self.scope.bindings.keys()) if self.scope else []
-                s = self.scope
+                s: Scope | None = self.scope
                 while s:
                     all_names.extend(s.bindings.keys())
                     s = s.parent
@@ -442,8 +444,8 @@ class Checker:
         elif isinstance(expr, Identifier):
             info = self.scope.lookup(expr.name)
             if info is None:
-                suggestions = []
-                s = self.scope
+                suggestions: list[str] = []
+                s: Scope | None = self.scope
                 while s:
                     suggestions.extend(s.bindings.keys())
                     s = s.parent
@@ -453,7 +455,7 @@ class Checker:
                     msg += f" Did you mean: {', '.join(matches)}?"
                 self.errors.append(Diagnostic("E011", msg, expr.span, "error"))
                 return ErrorType()
-            return info.get("type", AnyType())
+            return cast(Type, info.get("type", AnyType()))
         elif isinstance(expr, BinaryOp):
             left_type = self._check_expr(expr.left)
             right_type = self._check_expr(expr.right)

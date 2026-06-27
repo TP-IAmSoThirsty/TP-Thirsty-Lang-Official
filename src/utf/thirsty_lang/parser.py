@@ -107,6 +107,14 @@ class Parser:
                                               detail=str(e)))
                 self._synchronize()
         span = self._span_range()
+        # Fail closed for governed modules: if parsing produced any errors, the
+        # recovered statements cannot be trusted to preserve author intent, so
+        # discard them entirely rather than letting recovery smuggle executable
+        # statements past a malformed boundary. The interpreter refuses to run a
+        # program flagged this way.
+        if self.errors and header is not None and header.mode == "governed":
+            return Program(stmts=[], header=header, span=span,
+                           parse_failed=True)
         return Program(stmts=stmts, header=header, span=span)
 
     def _is_at_end(self) -> bool:
@@ -155,7 +163,7 @@ class Parser:
             return (first.line, first.col, last.line, last.col + len(last.lexeme))
         return (1, 1, 1, 1)
 
-    def _span(self, start_token: Token = None) -> tuple:
+    def _span(self, start_token: Token | None = None) -> tuple:
         if start_token is None:
             start_token = self.tokens[0]
         end_token = self._previous()
@@ -377,7 +385,7 @@ class Parser:
         condition = self._parse_expr()
         self._expect(TokenType.RPAREN, "E901", detail="Expected ')' after condition")
         then_block = self._parse_block()
-        else_block = None
+        else_block: Stmt | None = None
         if self._match(TokenType.HYDRATED):
             if self._check(TokenType.THIRSTY):
                 else_block = self._parse_if_stmt()  # else if
@@ -424,7 +432,7 @@ class Parser:
         self._match(TokenType.SEMICOLON)
         return ImportStmt(module_path=path_token.lexeme, alias=alias, span=self._span(start))
 
-    def _parse_function_decl(self) -> FunctionDecl:
+    def _parse_function_decl(self) -> FunctionDecl | GovernedFunctionDecl:
         start = self._advance()  # glass
         name_token = self._expect(TokenType.IDENTIFIER, "E901",
                                   detail="Expected function name after 'glass'")
@@ -704,7 +712,7 @@ class Parser:
 
     # === Expression Parsing with Precedence ===
 
-    def _parse_expr(self, precedence: int = 0) -> object:
+    def _parse_expr(self, precedence: int = 0) -> Expr:
         """Parse expression with Pratt-style precedence climbing."""
         prefix = self._parse_prefix()
         if prefix is None:
@@ -735,9 +743,12 @@ class Parser:
             if op == TokenType.ASSIGN or op == TokenType.EQ:
                 self._advance()
                 right = self._parse_expr(op_prec - 1)  # right-associative
-                return AssignStmt(target=prefix, value=right,
-                                  span=(prefix.span[0], prefix.span[1],
-                                        right.span[2], right.span[3]))
+                # Assignment is parsed at expression precedence but yields a
+                # statement node (AssignStmt); the caller handles it as such.
+                return AssignStmt(  # type: ignore[return-value]
+                    target=prefix, value=right,
+                    span=(prefix.span[0], prefix.span[1],
+                          right.span[2], right.span[3]))
             elif op == TokenType.LPAREN:
                 prefix = self._parse_call_suffix(prefix)
             elif op == TokenType.PIPE:
@@ -776,8 +787,17 @@ class Parser:
                                             right.span[2], right.span[3]))
             elif op == TokenType.DOT:
                 self._advance()
-                member_token = self._expect(TokenType.IDENTIFIER, "E901",
-                                            detail="Expected method/property name after '.'")
+                # After '.', the word is a member name in the object's
+                # namespace, not a language keyword: accept any token whose
+                # lexeme is a valid identifier (e.g. `log.error`, where `error`
+                # otherwise lexes as the ERROR keyword).
+                if (not self._check(TokenType.IDENTIFIER)
+                        and self._peek().lexeme.isidentifier()):
+                    member_token = self._advance()
+                else:
+                    member_token = self._expect(
+                        TokenType.IDENTIFIER, "E901",
+                        detail="Expected method/property name after '.'")
                 member = MemberAccess(
                     obj=prefix, member=member_token.lexeme,
                     span=(prefix.span[0], prefix.span[1],
@@ -802,7 +822,7 @@ class Parser:
                 break
         return prefix
 
-    def _parse_prefix(self) -> object:
+    def _parse_prefix(self) -> Expr | None:
         """Parse prefix expressions (literals, identifiers, unary operators)."""
         t = self._peek().type
 
@@ -916,7 +936,7 @@ class Parser:
         self._expect(TokenType.RBRACKET, "E901", detail="Expected ']' after reservoir literal")
         return ArrayLiteral(elements=elements, span=self._span(start))
 
-    def _parse_call_suffix(self, callee: object) -> object:
+    def _parse_call_suffix(self, callee: Expr) -> Expr:
         self._advance()  # consume (
         args = []
         if not self._check(TokenType.RPAREN):
@@ -950,7 +970,7 @@ class Parser:
         token = self._peek()
         return self._precedence_map().get(token.type, 0)
 
-    def _precedence_map(self) -> dict:
+    def _precedence_map(self) -> dict[TokenType, int]:
         return {
             TokenType.ASSIGN: 1,
             TokenType.EQ: 1,

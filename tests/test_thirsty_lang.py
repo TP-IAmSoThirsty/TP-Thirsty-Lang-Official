@@ -176,6 +176,16 @@ class TestInterpreter:
         result = Interpreter().interpret(ast)
         assert result == 42
 
+    def test_pipeline_operator_feeds_left_into_right(self):
+        # Regression: `_evaluate_pipeline` previously walked a non-existent
+        # `.steps` attribute on the binary PipelineExpr and raised
+        # AttributeError on any `->` expression. It must pipe left into right.
+        code = "glass double(x) {\n    return x * 2\n}\n21 -> double"
+        tokens = Lexer(code).lex()
+        ast = Parser(tokens).parse()
+        result = Interpreter().interpret(ast)
+        assert result == 42
+
     def test_if_stmt(self):
         """Test if/else via parser-generated AST."""
         code = "thirsty 1 < 2 {\n    42\n} hydrated {\n    0\n}"

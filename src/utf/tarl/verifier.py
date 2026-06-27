@@ -2,7 +2,7 @@
 T.A.R.L. Proof Verifier — Phase 4
 
 Independent verification of TarlProof certificates:
-  1. Signature validity (HMAC-SHA256)
+  1. Signature validity (HMAC-SHA256 or Ed25519)
   2. Policy hash match (optional, requires policy source)
   3. Evaluation trace internal consistency
 
@@ -10,11 +10,70 @@ No runtime or policy engine is required — proofs are self-contained.
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
+import json
 from dataclasses import dataclass, field
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from utf.tarl.spec import TarlProof
+
+
+def canonical_context_hash(context: dict) -> str:
+    """SHA-256 of a context, matching how the runtime stamps proof.context_hash.
+
+    Used to bind a proof to the context it was issued for, so an old ALLOW proof
+    cannot be replayed against a different context (C023)."""
+    ctx_bytes = json.dumps(
+        context, sort_keys=True, default=str, separators=(",", ":")
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(ctx_bytes).hexdigest()
+
+
+def _check_freshness(
+    proof: TarlProof,
+    max_age_seconds: float,
+    now: datetime.datetime | None,
+) -> bool:
+    """True if proof.evaluated_at is within max_age_seconds of ``now``."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    try:
+        dt = datetime.datetime.fromisoformat(
+            proof.evaluated_at.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.UTC)
+    age = (now - dt).total_seconds()
+    # Allow small clock skew into the future; reject anything older than the bound.
+    return -60.0 <= age <= max_age_seconds
+
+
+class ReplayGuard:
+    """Records accepted proofs and rejects exact reuse (single-use enforcement).
+
+    A proof's identity is its context hash, evaluation timestamp, and signature;
+    a duplicate is a replay. State is in-memory by default; back it with durable
+    storage for cross-process enforcement."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    @staticmethod
+    def proof_id(proof: TarlProof) -> str:
+        return f"{proof.context_hash}|{proof.evaluated_at}|{proof.signature}"
+
+    def check_and_record(self, proof: TarlProof) -> bool:
+        """Return True the first time a proof is seen, False on every reuse."""
+        pid = self.proof_id(proof)
+        if pid in self._seen:
+            return False
+        self._seen.add(pid)
+        return True
 
 
 @dataclass
@@ -50,28 +109,78 @@ class ProofVerifier:
 
         verifier = ProofVerifier()
         verifier.add_hmac_key("key1", b"my-secret")
+        verifier.add_ed25519_key("key2", ed25519_public_key)
         result = verifier.verify(proof, policy_source=policy_text)
         assert result.valid
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        require_signature: bool = False,
+        allowed_signature_algorithms: set[str] | None = None,
+        require_policy_source: bool = False,
+        max_age_seconds: float | None = None,
+        revoked_policy_hashes: set[str] | None = None,
+        replay_guard: ReplayGuard | None = None,
+    ) -> None:
+        """
+        Strict-mode options (all default to today's permissive behavior):
+
+          require_signature             — an unsigned proof is INVALID.
+          allowed_signature_algorithms  — restrict accepted signature families
+                                          (e.g. {"ed25519"} rejects HMAC proofs).
+                                          Compared against the algorithm family
+                                          (``hmac`` / ``ed25519``).
+          require_policy_source         — verification without a policy_source to
+                                          bind policy_hash against is INVALID.
+          max_age_seconds               — reject proofs whose evaluated_at is
+                                          older than this (freshness; C024).
+          revoked_policy_hashes         — proofs bound to a revoked policy hash
+                                          are INVALID (policy revocation; C024).
+          replay_guard                  — a ReplayGuard; a proof already seen is
+                                          rejected as a replay (C023/C024).
+        """
         self._hmac_keys: dict[str, bytes] = {}
+        self._ed25519_keys: dict[str, Ed25519PublicKey] = {}
+        self.require_signature = require_signature
+        self.allowed_signature_algorithms = (
+            {a.lower() for a in allowed_signature_algorithms}
+            if allowed_signature_algorithms is not None
+            else None
+        )
+        self.require_policy_source = require_policy_source
+        self.max_age_seconds = max_age_seconds
+        self.revoked_policy_hashes = revoked_policy_hashes or set()
+        self.replay_guard = replay_guard
 
     def add_hmac_key(self, key_id: str, secret: bytes) -> ProofVerifier:
         """Register an HMAC-SHA256 key for signature verification."""
         self._hmac_keys[key_id] = secret
         return self
 
+    def add_ed25519_key(
+        self, key_id: str, public_key: bytes | Ed25519PublicKey
+    ) -> ProofVerifier:
+        """Register an Ed25519 public key for signature verification."""
+        if isinstance(public_key, Ed25519PublicKey):
+            key = public_key
+        else:
+            key = Ed25519PublicKey.from_public_bytes(public_key)
+        self._ed25519_keys[key_id] = key
+        return self
+
     def verify(
         self,
         proof: TarlProof,
         policy_source: str | None = None,
+        expected_context: dict | None = None,
+        now: datetime.datetime | None = None,
     ) -> VerificationResult:
         """
         Verify a TarlProof.
 
         Checks performed:
-          signature    — HMAC-SHA256 valid (or None if unsigned)
+          signature    — HMAC-SHA256 or Ed25519 valid (or None if unsigned)
           policy_hash  — matches provided policy_source (or None if not given)
           trace        — internal consistency (k is first True in T, verdict correct)
 
@@ -85,11 +194,18 @@ class ProofVerifier:
 
         # ── 1. Signature ──────────────────────────────────────────────────────
         sig_result = self._check_signature(proof)
+        if self.require_signature and sig_result is None:
+            # Strict mode: an unsigned proof is not acceptable.
+            sig_result = False
         checks["signature"] = sig_result
         if sig_result is True:
             messages.append("signature valid")
         elif sig_result is False:
-            messages.append("signature INVALID")
+            messages.append(
+                "signature INVALID"
+                if proof.signature or not self.require_signature
+                else "signature REQUIRED but proof is unsigned"
+            )
         else:
             messages.append("signature skipped (unsigned)")
 
@@ -100,6 +216,10 @@ class ProofVerifier:
             messages.append(
                 "policy hash valid" if ph_ok else "policy hash MISMATCH"
             )
+        elif self.require_policy_source:
+            # Strict mode: cannot certify policy binding without the source.
+            checks["policy_hash"] = False
+            messages.append("policy source REQUIRED but not provided")
         else:
             checks["policy_hash"] = None
 
@@ -110,10 +230,48 @@ class ProofVerifier:
             "trace consistent" if trace_ok else "trace INCONSISTENT"
         )
 
+        # ── 4. Context binding (C023: replay an old proof for a new context) ──
+        if expected_context is not None:
+            cb_ok = proof.context_hash == canonical_context_hash(expected_context)
+            checks["context_binding"] = cb_ok
+            messages.append(
+                "context binds" if cb_ok else "context hash MISMATCH"
+            )
+        else:
+            checks["context_binding"] = None
+
+        # ── 5. Freshness (C024: replay a stale ALLOW) ─────────────────────────
+        if self.max_age_seconds is not None:
+            fr_ok = _check_freshness(proof, self.max_age_seconds, now)
+            checks["freshness"] = fr_ok
+            messages.append("fresh" if fr_ok else "proof is STALE")
+        else:
+            checks["freshness"] = None
+
+        # ── 6. Policy revocation (C024) ───────────────────────────────────────
+        if self.revoked_policy_hashes:
+            nr_ok = proof.policy_hash not in self.revoked_policy_hashes
+            checks["not_revoked"] = nr_ok
+            messages.append("policy current" if nr_ok else "policy REVOKED")
+        else:
+            checks["not_revoked"] = None
+
+        # ── 7. Replay (exact reuse of a previously-accepted proof) ────────────
+        if self.replay_guard is not None:
+            fresh = self.replay_guard.check_and_record(proof)
+            checks["not_replayed"] = fresh
+            messages.append("first use" if fresh else "REPLAYED proof")
+        else:
+            checks["not_replayed"] = None
+
         valid = (
             sig_result is not False
             and checks["policy_hash"] is not False
             and trace_ok
+            and checks["context_binding"] is not False
+            and checks["freshness"] is not False
+            and checks["not_revoked"] is not False
+            and checks["not_replayed"] is not False
         )
 
         return VerificationResult(
@@ -135,6 +293,13 @@ class ProofVerifier:
         if not sep:
             return False
 
+        # Strict mode: reject signature families outside the allow-list (e.g.
+        # an HMAC proof presented to an Ed25519-only verifier).
+        if self.allowed_signature_algorithms is not None:
+            family = alg.split("-", 1)[0].lower()
+            if family not in self.allowed_signature_algorithms:
+                return False
+
         if alg == "hmac-sha256":
             secret = self._hmac_keys.get(proof.key_id)
             if secret is None:
@@ -143,6 +308,18 @@ class ProofVerifier:
                 secret, proof.canonical_bytes(), hashlib.sha256
             ).hexdigest()
             return hmac.compare_digest(expected, sig_hex)
+
+        if alg == "ed25519":
+            public_key = self._ed25519_keys.get(proof.key_id)
+            if public_key is None:
+                return False
+            try:
+                public_key.verify(
+                    bytes.fromhex(sig_hex), proof.canonical_bytes()
+                )
+                return True
+            except (ValueError, InvalidSignature):
+                return False
 
         return False  # unknown algorithm
 
