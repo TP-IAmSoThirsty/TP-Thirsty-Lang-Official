@@ -233,6 +233,48 @@ def test_verify_with_ed25519_key(monkeypatch, tmp_path):
     assert exc.value.code == 0
 
 
+# --- keygen ----------------------------------------------------------------
+
+def test_keygen_writes_keypair(monkeypatch, tmp_path, capsys):
+    priv = str(tmp_path / "signer.key")
+    _argv(monkeypatch, "tarl", "keygen", "proof-signer", "--key-id", "s1",
+          "--out", priv)
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
+    assert "Generated" in capsys.readouterr().out
+    from utf.tarl import keystore
+    loaded = keystore.load(priv)
+    assert loaded.key_id == "s1" and loaded.has_private
+    assert keystore.load(priv + ".pub").has_private is False
+
+
+def test_keygen_json_and_rotate(monkeypatch, tmp_path, capsys):
+    priv = str(tmp_path / "ta.key")
+    _argv(monkeypatch, "tarl", "keygen", "time-authority", "--key-id", "t1",
+          "--out", priv, "--rotate", "--json")
+    with pytest.raises(SystemExit):
+        tarl_cli.main()
+    assert '"public_key"' in capsys.readouterr().out
+
+
+def test_verify_with_ed25519_key_file(monkeypatch, tmp_path):
+    from utf.tarl import keystore
+    key = keystore.generate("ed1", keystore.ROLE_PROOF_SIGNER)
+    pub = str(tmp_path / "k.pub")
+    key.public_only().write(pub, include_private=False)
+    rt = TarlRuntime(PolicyParser.parse(POLICY))
+    rt.set_ed25519_signing_key("ed1", key.private_bytes())
+    _d, proof = rt.evaluate_with_proof({"role": "admin"})
+    proof_file = tmp_path / "p.json"
+    proof_file.write_text(proof.to_json())
+    _argv(monkeypatch, "tarl", "verify", str(proof_file),
+          "--ed25519-key-file", pub, "--ed25519-only")
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
+
+
 # --- revoke (durable store) -----------------------------------------------
 
 def test_revoke_add_list_remove(monkeypatch, tmp_path, capsys):

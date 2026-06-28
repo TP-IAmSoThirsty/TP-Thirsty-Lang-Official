@@ -54,7 +54,13 @@ def main():
     )
     verify_parser.add_argument(
         '--ed25519-key', default=None, metavar='ID:HEX',
-        help='Ed25519 public key as key_id:hex_public_key',
+        help='Ed25519 public key as key_id:hex_public_key '
+             '(deprecated: hex on argv is exposed; prefer --ed25519-key-file)',
+    )
+    verify_parser.add_argument(
+        '--ed25519-key-file', action='append', default=None, metavar='FILE',
+        help='Ed25519 public key file from "tarl keygen" (repeatable, so '
+             'rotated keys can be verified side by side)',
     )
     verify_parser.add_argument(
         '--require-signature', action='store_true',
@@ -160,6 +166,34 @@ def main():
         '--json', '-j', action='store_true', help='Output as JSON array'
     )
 
+    # keygen
+    keygen_parser = subparsers.add_parser(
+        'keygen', help='Generate an Ed25519 trust-root keypair'
+    )
+    keygen_parser.add_argument(
+        'role',
+        choices=['authority-issuer', 'proof-signer', 'time-authority'],
+        help='Which trust root the key is for',
+    )
+    keygen_parser.add_argument(
+        '--key-id', required=True, help='Identifier stamped into the key',
+    )
+    keygen_parser.add_argument(
+        '--out', '-o', required=True, metavar='FILE',
+        help='Private key file to write (created 0600)',
+    )
+    keygen_parser.add_argument(
+        '--pub', default=None, metavar='FILE',
+        help='Public key file to write (default: <out>.pub)',
+    )
+    keygen_parser.add_argument(
+        '--rotate', action='store_true',
+        help='Rotation: print guidance to keep prior public keys registered',
+    )
+    keygen_parser.add_argument(
+        '--json', '-j', action='store_true', help='Output as JSON'
+    )
+
     # revoke
     revoke_parser = subparsers.add_parser(
         'revoke', help='Manage the durable policy-revocation store'
@@ -254,6 +288,8 @@ def main():
         _cmd_lint(args)
     elif args.command == 'audit':
         _cmd_audit(args)
+    elif args.command == 'keygen':
+        _cmd_keygen(args)
     elif args.command == 'revoke':
         _cmd_revoke(args)
     elif args.command == 'explain':
@@ -357,6 +393,15 @@ def _cmd_verify(args):
             verifier.add_ed25519_key(key_id, bytes.fromhex(hex_public))
         except ValueError as e:
             print(f"Invalid --ed25519-key format: {e}", file=sys.stderr)
+            sys.exit(1)
+    for key_path in (getattr(args, "ed25519_key_file", None) or []):
+        from utf.tarl import keystore
+        try:
+            kf = keystore.load(key_path)
+            verifier.add_ed25519_key(kf.key_id, kf.public_bytes())
+        except (OSError, ValueError) as e:
+            print(f"Invalid --ed25519-key-file {key_path!r}: {e}",
+                  file=sys.stderr)
             sys.exit(1)
 
     result = verifier.verify(proof, policy_source=policy_source)
@@ -472,6 +517,34 @@ def _cmd_audit(args):
                 f"rule={p.rule_index:<3}{flag}"
             )
         print(f"\n{len(proofs)} proof(s) returned.")
+
+
+# ── keygen ───────────────────────────────────────────────────────────────────
+
+def _cmd_keygen(args):
+    from utf.tarl import keystore
+
+    key = keystore.generate(args.key_id, args.role)
+    pub_path = args.pub or (args.out + ".pub")
+    key.write(args.out, include_private=True)
+    key.public_only().write(pub_path, include_private=False)
+
+    if args.json:
+        print(json.dumps({
+            "key_id": key.key_id, "role": key.role,
+            "public_key": key.public_key_hex,
+            "private_file": args.out, "public_file": pub_path,
+        }, indent=2))
+    else:
+        print(f"Generated {key.role} key {key.key_id!r}")
+        print(f"  private: {args.out} (0600)")
+        print(f"  public:  {pub_path}")
+        print(f"  public_key: {key.public_key_hex}")
+        if args.rotate:
+            print("\nRotation: keep the PREVIOUS public key(s) registered with "
+                  "verifiers until all\nin-flight artifacts signed by the old "
+                  "key have expired, then retire them.")
+    sys.exit(0)
 
 
 # ── revoke ───────────────────────────────────────────────────────────────────
