@@ -173,6 +173,12 @@ class Interpreter:
         # Governance wiring (Part A): optional policy engine + authority context.
         self.tarl_runtime = None
         self.authority = None
+        # The verified credential (if any) behind ``authority``, retained so the
+        # capability broker can be built with the same authenticity it sees here.
+        self._verified_authority: Any = None
+        # Optional filesystem confinement for governed file capabilities; when
+        # set, ``thirst::fs`` targets are confined to these roots (C042).
+        self.path_guard: Any = None
         # Authority provenance: a bare string authority is self-asserted
         # (authenticated=False, no grants); a verified signed claim sets these.
         self.authority_authenticated = False
@@ -498,7 +504,9 @@ class Interpreter:
             key_id="",
         )
 
-    def _gate_capability(self, action: str, target: str) -> None:
+    def _gate_capability(
+        self, action: str, target: str, *, path: str | None = None
+    ) -> None:
         """Capability gate for sensitive operations (imports, I/O) in governed
         mode. Fail-closed: in governed mode a gated capability is denied unless
         a TARL policy engine + authority are attached AND return ALLOW. With no
@@ -506,9 +514,16 @@ class Interpreter:
         it is denied with a proof — governed mode never implies authority.
         Deny-by-default (no matching rule → DENY) comes from the engine itself.
         Core (ungoverned) mode is unaffected.
+
+        The actual policy evaluation is delegated to a
+        :class:`~utf.tarl.broker.CapabilityBroker` so in-language stdlib effects
+        and out-of-language adapters share one mediation path (invariant #7,
+        "no adapter side doors"). ``path`` (when given) is brokered through the
+        path guard so the policy sees the confined canonical filesystem target.
         """
         if self.mode != "governed":
             return
+        from utf.tarl.broker import CapabilityDenied
         from utf.tarl.spec import TarlVerdict
         ctx = {"action": action, "target": str(target),
                **self._authority_context()}
@@ -532,8 +547,20 @@ class Interpreter:
                 "fail-closed: governed mode requires a policy engine to "
                 "authorize this capability (run with --policy)",
                 proof)
+        broker = self.make_broker()
         try:
-            decision, proof = self.tarl_runtime.evaluate_with_proof(ctx)
+            if path is not None and self.path_guard is not None:
+                decision = broker.require_path(action, path)
+            else:
+                decision = broker.require(action, target)
+        except CapabilityDenied as denied:
+            proof = denied.decision.proof
+            self._last_proof = proof
+            raise GovernanceViolation(
+                f"{action} {target}",
+                denied.decision.reason
+                or f"capability denied ({proof.verdict})",
+                proof) from None
         except GovernanceViolation:
             raise
         except Exception as exc:
@@ -550,12 +577,7 @@ class Interpreter:
             raise GovernanceViolation(
                 f"{action} {target}",
                 f"fail-closed: policy evaluation error: {exc}", proof) from exc
-        self._last_proof = proof
-        if decision.verdict != TarlVerdict.ALLOW:
-            raise GovernanceViolation(
-                f"{action} {target}",
-                decision.reason or f"capability denied ({decision.verdict})",
-                proof)
+        self._last_proof = decision.proof
 
     def _wrap_imported_module_capabilities(
         self, module_path: str, module: object
@@ -580,12 +602,19 @@ class Interpreter:
             if not callable(fn):
                 continue
 
-            def guarded(*args, __fn=fn, __name=name, __action=action):
+            # Filesystem targets carry a real path in arg 0 — broker them through
+            # the path guard so traversal/symlink escapes fail closed (C042).
+            is_fs = module_path == "thirst::fs"
+
+            def guarded(*args, __fn=fn, __name=name, __action=action,
+                        __is_fs=is_fs):
                 target_detail = args[0] if args else ""
                 target = f"{module_path}.{__name}"
                 if target_detail != "":
                     target = f"{target}:{target_detail}"
-                self._gate_capability(__action, target)
+                path = (target_detail if __is_fs and isinstance(target_detail, str)
+                        and target_detail != "" else None)
+                self._gate_capability(__action, target, path=path)
                 return __fn(*args)
 
             wrapped[name] = guarded
@@ -778,6 +807,7 @@ class Interpreter:
         self.authority = authority
         self.authority_authenticated = False
         self.authority_grants = ()
+        self._verified_authority = None
         return self
 
     def set_verified_authority(self, verified) -> "Interpreter":
@@ -789,6 +819,7 @@ class Interpreter:
         self.authority = verified.subject
         self.authority_authenticated = bool(verified.authenticated)
         self.authority_grants = tuple(verified.grants)
+        self._verified_authority = verified
         return self
 
     def set_hardened(self, hardened: bool = True) -> "Interpreter":
@@ -796,6 +827,37 @@ class Interpreter:
         required at every governed gate, else fail closed)."""
         self.hardened = hardened
         return self
+
+    def set_path_guard(self, roots) -> "Interpreter":
+        """Confine governed ``thirst::fs`` targets to ``roots`` (C042).
+
+        ``roots`` is an iterable of allowed directory roots, or a ready
+        ``utf.tarl.pathguard.PathGuard``. Once set, file capabilities are
+        brokered on the *canonical* path, so traversal/symlink escapes fail
+        closed before the policy is consulted. With no guard set, file targets
+        are brokered as-is (unchanged behaviour)."""
+        from utf.tarl.pathguard import PathGuard
+        if roots is None or isinstance(roots, PathGuard):
+            self.path_guard = roots
+        else:
+            self.path_guard = PathGuard(list(roots))
+        return self
+
+    def make_broker(self):
+        """Build a :class:`~utf.tarl.broker.CapabilityBroker` bound to this
+        interpreter's runtime, authority, hardened posture, and path guard.
+
+        This is the *single* mediation point: the in-language capability gate
+        (:meth:`_gate_capability`) and any out-of-language adapters (FFI, MCP/
+        agent tools, subprocess wrappers) all broker through an identically
+        configured broker, so there is one enforcement path, not two."""
+        from utf.tarl.broker import CapabilityBroker
+        authority = (self._verified_authority
+                     if self._verified_authority is not None
+                     else (self.authority or ""))
+        return CapabilityBroker(
+            self.tarl_runtime, authority=authority,
+            require_authenticated=self.hardened, path_guard=self.path_guard)
 
     def _authority_context(self) -> dict:
         """Authority fields merged into every governance evaluation context."""
