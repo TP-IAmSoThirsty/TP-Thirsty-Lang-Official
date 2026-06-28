@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
+from utf.tarl.core import PolicyParser
+from utf.tarl.runtime import TarlRuntime
 from utf.thirsty_lang.interpreter import GovernanceViolation, Interpreter
 from utf.thirsty_lang.lexer import Lexer
 from utf.thirsty_lang.parser import Parser
@@ -72,6 +74,9 @@ def test_unary_binding(expr, expected):
 
 def _run_governed(src):
     interp = Interpreter()
+    interp.attach_tarl(TarlRuntime(PolicyParser.parse(
+        'policy p\nwhen action == "withdraw" => ALLOW\nwhen true => DENY\n')))
+    interp.set_authority("admin")
     interp.interpret(Parser(Lexer(src).lex()).parse(), mode="governed")
     return interp
 

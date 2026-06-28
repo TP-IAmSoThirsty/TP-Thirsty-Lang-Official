@@ -76,8 +76,9 @@ glass withdraw(amt) requires amt > 0 {
 On **every call** to a governed function, the interpreter applies a layered,
 default-deny decision (`Interpreter._enforce_governance`):
 
-1. **In-language precondition** — the `requires` expression is evaluated in the
-   call scope. A falsy result denies the call and raises `GovernanceViolation`.
+1. **In-language contract predicates** — `requires`, `ensures`, and `invariant`
+   expressions are evaluated in the call scope. A falsy result denies the call
+   and raises `GovernanceViolation`.
 2. **Cross-mode guard** — a governed function invoked while the program is not
    in `governed` mode is denied (the runtime counterpart of checker error
    `E053`, "cannot call governed function from core mode").
@@ -94,8 +95,9 @@ default-deny decision (`Interpreter._enforce_governance`):
    must attest to the signer rather than merely detect tampering by parties
    without the shared HMAC key. The `thirsty run` path emits unsigned proofs
    unless the embedding runtime configures a signing key.
-4. **Default** — in `governed` mode, a call that no layer explicitly allowed is
-   **denied** (deny-by-default).
+4. **Default** — in `governed` mode, a governed function with no attached
+   policy engine or no authority is **denied** with a proof. A call that no
+   layer explicitly allowed is denied (deny-by-default).
 
 A `GovernanceViolation` is a hard floor: `spillage` error handlers do **not**
 catch it, so governed denials cannot be swallowed by user error handling. This

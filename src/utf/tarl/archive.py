@@ -249,12 +249,19 @@ class TarlAuditArchive:
             ).fetchone()
         return str(row[0]) if row and row[0] else _GENESIS
 
-    def verify_chain(self) -> ChainVerification:
+    def verify_chain(
+        self, expected_head: str | None = None
+    ) -> ChainVerification:
         """Walk the hash chain in insertion order and report its integrity.
 
         Detects record tampering (a modified ``proof_json`` no longer hashes to
         its stored ``entry_hash``), deletion/reordering (a record's ``prev_hash``
         no longer matches its predecessor's ``entry_hash``), and a tampered head.
+
+        ``expected_head`` is a trusted external checkpoint (see :meth:`head_hash`
+        and ``tarl audit checkpoint``). A chain that re-links internally but
+        whose head differs from the checkpoint reveals suffix rewriting or
+        truncation — the case the internal walk alone cannot catch.
         """
         with self._lock:
             conn = self._connect()
@@ -275,6 +282,11 @@ class TarlAuditArchive:
                     False, len(rows), row_id,
                     "record contents do not match entry_hash (tampered)")
             prev = entry_hash
+        if expected_head is not None and prev != expected_head:
+            return ChainVerification(
+                False, len(rows), None,
+                f"chain head {prev!r} does not match the trusted checkpoint "
+                f"{expected_head!r} (suffix rewrite or truncation)")
         return ChainVerification(True, len(rows))
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────

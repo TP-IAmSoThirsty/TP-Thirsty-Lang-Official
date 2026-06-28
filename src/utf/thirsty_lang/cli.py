@@ -51,8 +51,10 @@ def main():
     run_parser.add_argument("--locked", action="store_true", help="Require lockfile verification before executing")
     run_parser.add_argument("--hardened", action="store_true", help="Hardened posture: require an authenticated (signed) authority and Ed25519-signed proofs at every governed gate")
     run_parser.add_argument("--authority-token", type=str, metavar="FILE", help="Path to a signed authority claim (JSON) authenticating the authority")
-    run_parser.add_argument("--authority-key", type=str, action="append", metavar="ID:HEX", help="Trusted issuer Ed25519 public key for verifying the authority token (repeatable)")
-    run_parser.add_argument("--sign-proofs", type=str, metavar="ID:HEX", help="Ed25519 private seed (hex) the runtime uses to sign decision proofs")
+    run_parser.add_argument("--authority-key", type=str, action="append", metavar="ID:HEX", help="Trusted issuer Ed25519 public key for verifying the authority token (deprecated: hex on argv is exposed; prefer --authority-key-file)")
+    run_parser.add_argument("--authority-key-file", type=str, action="append", metavar="FILE", help="Trusted issuer Ed25519 public key file from 'tarl keygen' (repeatable)")
+    run_parser.add_argument("--sign-proofs", type=str, metavar="ID:HEX", help="Ed25519 private seed (hex) the runtime uses to sign decision proofs (deprecated: hex on argv is exposed; prefer --sign-proofs-file)")
+    run_parser.add_argument("--sign-proofs-file", type=str, metavar="FILE", help="Ed25519 proof-signer private key file from 'tarl keygen'")
 
     # repl
     repl_parser = subparsers.add_parser("repl", help="Start interactive REPL")
@@ -269,6 +271,14 @@ pour result
             except ValueError as e:
                 print(f"Error: invalid --authority-key {spec!r}: {e}", file=sys.stderr)
                 sys.exit(1)
+        for key_path in (getattr(args, "authority_key_file", None) or []):
+            from utf.tarl import keystore
+            try:
+                kf = keystore.load(key_path)
+                verifier.add_ed25519_key(kf.key_id, kf.public_bytes())
+            except (OSError, ValueError) as e:
+                print(f"Error: invalid --authority-key-file {key_path!r}: {e}", file=sys.stderr)
+                sys.exit(1)
         with open(token_path) as tf:
             claim = AuthorityClaim.from_json(tf.read())
         auth_result = verifier.verify(claim)
@@ -280,7 +290,16 @@ pour result
     # Proof signing: give the runtime an Ed25519 key so decision proofs are
     # non-repudiable (required by hardened mode).
     sign_spec = getattr(args, "sign_proofs", None)
-    if sign_spec and runtime is not None:
+    sign_file = getattr(args, "sign_proofs_file", None)
+    if sign_file and runtime is not None:
+        from utf.tarl import keystore
+        try:
+            kf = keystore.load(sign_file)
+            runtime.set_ed25519_signing_key(kf.key_id, kf.private_bytes())
+        except (OSError, ValueError) as e:
+            print(f"Error: invalid --sign-proofs-file {sign_file!r}: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif sign_spec and runtime is not None:
         kid, _, hexseed = sign_spec.partition(":")
         try:
             runtime.set_ed25519_signing_key(kid, bytes.fromhex(hexseed))

@@ -50,6 +50,7 @@ from utf.thirsty_lang.ast import (
     StringLiteral,
     StructDecl,
     SymbolExpr,
+    SymbolStmt,
     ThrowStmt,
     UnaryOp,
     VariableDecl,
@@ -111,7 +112,7 @@ try:
     from importlib.metadata import version as _version
     __version__ = _version("thirsty-lang")
 except Exception:
-    __version__ = "0.6.0"  # fallback
+    __version__ = "0.7.0"  # fallback
 __all__ = [
     "Token", "TokenType", "KEYWORDS",
     "Lexer",
@@ -131,7 +132,7 @@ __all__ = [
     "GovernedFunctionDecl",
     "SpillageStmt", "CleanupStmt", "ThrowStmt", "CascadeCall",
     "NewExpr", "FloodExpr", "DripExpr", "EvaporateExpr", "CondenseExpr",
-    "SymbolExpr", "PipelineExpr", "CombineExpr",
+    "SymbolExpr", "SymbolStmt", "PipelineExpr", "CombineExpr",
     "ShadowThirstMutation",
     "Parser",
     "Type", "IntType", "FloatType", "BoolType", "StringType", "VoidType", "AnyType", "ErrorType",

@@ -111,7 +111,7 @@ pipeline       = pipe { "|" pipe } ;
 
 pipe           = combine { "|>" combine } ;
 
-combine        = logical_or { "||" logical_or } ;
+combine        = logical_or { ("^" | "||") logical_or } ;
 
 logical_or     = logical_and { "or" logical_and } ;
 
@@ -221,11 +221,15 @@ declaration    = function_decl
 
 function_decl  = "glass" identifier "(" [param { "," param }] ")" [":" type]
                  [ "requires" expr ]                  /* governed precondition */
+                 [ "ensures" expr ]                   /* governed postcondition */
+                 [ "invariant" expr ]                 /* governed invariant */
                  block ;
 
-/* A function with a `requires` clause is a *governed function*: the interpreter
-   evaluates the precondition on every call and denies (GovernanceViolation) on a
-   falsy result. See docs/governance_model.md § Runtime Enforcement. */
+/* A function with a `requires`, `ensures`, or `invariant` clause is a
+   *governed function*: the interpreter evaluates its contract predicates on
+   every call. In governed mode, entry also requires an attached T.A.R.L.
+   policy engine plus authority; otherwise the call fails closed. See
+   docs/governance_model.md § Runtime Enforcement. */
 
 param          = identifier ":" type ;
 
@@ -273,7 +277,7 @@ cascade_call   = "cascade" identifier "(" expr ")" ";" ;
 
 mutation       = "mutation" identifier "(" expr ")" block ;
 
-symbol         = "symbol" identifier "=" expr ";" ;
+symbol         = "symbol" identifier ";" ;
 
 new_expr       = "new" identifier "(" [expr { "," expr }] ")" ;   /* class instantiation */
 ```

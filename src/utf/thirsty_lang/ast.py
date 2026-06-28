@@ -205,6 +205,11 @@ class AssignStmt(Stmt):
 
 
 @dataclass
+class SymbolStmt(Stmt):
+    symbol_name: str
+
+
+@dataclass
 class IfStmt(Stmt):
     condition: Expr
     then_block: Stmt  # BlockStmt

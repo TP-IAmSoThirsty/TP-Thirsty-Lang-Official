@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-28
+
+### Added — Production-deployment readiness
+
+Closes the three operational gaps the 0.6.0 whitepaper left to the embedder, so
+the reference runtime can be deployed for governed execution in-tree rather than
+only as a release candidate. All additions are opt-in and backward compatible.
+
+- **Unified capability mediation.** The in-language capability gate now delegates
+  policy evaluation to a `CapabilityBroker` built from the interpreter's runtime,
+  authority, hardened posture, and path guard — the same broker the
+  out-of-language adapters (FFI, MCP/tool, subprocess) use. One enforcement path,
+  not two (mandatory invariant #7, "no adapter side doors").
+- **Filesystem confinement.** `Interpreter.set_path_guard(roots)` routes governed
+  `thirst::fs` targets through `broker.require_path`, so traversal/symlink
+  escapes fail closed before the effect (C042).
+- **Durable cross-process state.** New `utf.tarl.durable` adds a SQLite-backed
+  `DurableReplayGuard` (single-use enforcement that survives restarts and is
+  shared across processes) and a `RevocationStore` (durable revoked-policy-hash
+  set). `TarlAuditArchive.verify_chain(expected_head=...)` detects suffix
+  rewrite/truncation against a trusted external checkpoint.
+- **Deployment key management.** New `utf.tarl.keystore` defines a versioned
+  on-disk Ed25519 key format (private files written `0600`) with
+  `generate()`/`load()`. `tarl keygen` mints keys for the three trust roots;
+  file-based key flags (`tarl verify --ed25519-key-file`, `thirsty run
+  --authority-key-file/--sign-proofs-file`) replace passing seeds as hex on argv
+  (the hex flags remain but are deprecated). Repeatable verification keys support
+  rotation.
+- **CLI.** `tarl keygen`, `tarl revoke (<hash> | --list | --remove)`,
+  `tarl audit checkpoint`, and `--checkpoint` on `tarl audit verify-chain`.
+- **Docs.** New `docs/PRODUCTION_DEPLOYMENT.md` checklist; whitepaper §8/§9
+  updated to reflect the closed gaps. CI gains a `production-acceptance` job.
+
 ## [0.6.0] - 2026-06-27
 
 ### Added — Hardened-runtime acceptance bar (C022–C050)
