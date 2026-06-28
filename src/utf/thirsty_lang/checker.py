@@ -54,6 +54,7 @@ from utf.thirsty_lang.ast import (
     StringLiteral,
     StructDecl,
     SymbolExpr,
+    SymbolStmt,
     ThrowStmt,
     TokenType,
     UnaryOp,
@@ -225,6 +226,8 @@ class Checker:
             self._check_expr(stmt.target)
         elif isinstance(stmt, AssignStmt):
             self._check_assign_stmt(stmt)
+        elif isinstance(stmt, SymbolStmt):
+            self._check_symbol_stmt(stmt)
         elif isinstance(stmt, ImportStmt):
             self._check_import_stmt(stmt)
         elif isinstance(stmt, ExprStmt):
@@ -392,6 +395,13 @@ class Checker:
                 self.errors.append(make_error("E020", span=stmt.span, name=name))
         self._check_expr(stmt.value)
 
+    def _check_symbol_stmt(self, stmt: SymbolStmt):
+        if not self.scope.declare(
+                stmt.symbol_name,
+                {"type": StringType(), "is_mut": False, "kind": "symbol"}):
+            self.errors.append(
+                make_error("E010", span=stmt.span, name=stmt.symbol_name))
+
     def _check_import_stmt(self, stmt: ImportStmt):
         alias = stmt.alias or stmt.module_path
         self.scope.declare(alias, {"type": AnyType(), "is_mut": False, "kind": "module"})
@@ -441,7 +451,14 @@ class Checker:
         elif isinstance(expr, QuenchedLiteral):
             inner = type_from_name(expr.type_param) if expr.type_param else AnyType()
             return QuenchedType(inner)
+        elif isinstance(expr, AssignStmt):
+            self.errors.append(Diagnostic(
+                "E901", "Assignment cannot be used as an expression",
+                expr.span, "error"))
+            return ErrorType()
         elif isinstance(expr, Identifier):
+            if expr.name == "__error__":
+                return ErrorType()
             info = self.scope.lookup(expr.name)
             if info is None:
                 suggestions: list[str] = []

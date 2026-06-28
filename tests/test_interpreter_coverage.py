@@ -82,7 +82,14 @@ def test_governed_requires_pass():
     src = ('glass withdraw(amt) requires amt > 0 { return amt }\n'
            'drink r = withdraw(10)\n'
            'r')
-    assert run(src, mode="governed") == 10
+    from utf.tarl.core import PolicyParser
+    from utf.tarl.runtime import TarlRuntime
+    prog = Parser(Lexer(src).lex()).parse()
+    interp = Interpreter()
+    interp.attach_tarl(TarlRuntime(PolicyParser.parse(
+        'policy p\nwhen action == "withdraw" => ALLOW\nwhen true => DENY\n')))
+    interp.set_authority("admin")
+    assert interp.interpret(prog, mode="governed") == 10
 
 
 def test_governed_requires_denied():

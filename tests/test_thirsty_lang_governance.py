@@ -30,6 +30,19 @@ def _load(src, mode=None):
     return interp
 
 
+def _load_with_policy(src):
+    from utf.tarl.core import PolicyParser
+    from utf.tarl.runtime import TarlRuntime
+
+    prog = Parser(Lexer(src).lex()).parse()
+    interp = Interpreter()
+    interp.attach_tarl(TarlRuntime(PolicyParser.parse(
+        'policy p\nwhen action == "withdraw" => ALLOW\nwhen true => DENY\n')))
+    interp.set_authority("admin")
+    interp.interpret(prog)
+    return interp
+
+
 GOVERNED_SRC = """module bank: governed
 glass withdraw(amt) requires amt > 0 {
     return amt * 2
@@ -60,11 +73,11 @@ class TestParsing:
 
 class TestPrecondition:
     def test_precondition_satisfied_runs(self):
-        interp = _load(GOVERNED_SRC)
+        interp = _load_with_policy(GOVERNED_SRC)
         assert interp.env.get("withdraw")(5) == 10
 
     def test_precondition_violation_denies(self):
-        interp = _load(GOVERNED_SRC)
+        interp = _load_with_policy(GOVERNED_SRC)
         with pytest.raises(GovernanceViolation) as exc:
             interp.env.get("withdraw")(-1)
         assert "precondition failed" in exc.value.reason
@@ -114,6 +127,12 @@ class TestTarlRouting:
         assert interp.env.get("withdraw")(5) == 10
         assert interp._last_proof is not None
         assert str(interp._last_proof.verdict) == "ALLOW"
+
+    def test_missing_policy_blocks_governed_function(self):
+        interp = _load(GOVERNED_SRC)
+        with pytest.raises(GovernanceViolation) as exc:
+            interp.env.get("withdraw")(5)
+        assert "policy engine and authority" in exc.value.reason
 
     def test_deny_policy_blocks_with_proof(self):
         prog = Parser(Lexer(GOVERNED_SRC).lex()).parse()

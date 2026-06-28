@@ -2,9 +2,9 @@
 Denial tests for the fail-closed capability gate and proof-carrying decisions.
 
 Governed mode never implies authority: a gated capability (write / read /
-import) is DENIED unless a TARL policy engine + authority are wired AND return
-ALLOW. Core mode is unaffected. Every governed boundary decision — capability
-gate, contract ALLOW, contract DENY — carries a proof.
+import) or governed function is DENIED unless a TARL policy engine + authority
+are wired AND return ALLOW. Core mode is unaffected. Every governed boundary
+decision — capability gate, contract ALLOW, contract DENY — carries a proof.
 """
 import os
 import sys
@@ -153,16 +153,30 @@ _WITHDRAW = (
 
 
 def test_contract_allow_carries_proof():
-    interp = _run(_WITHDRAW + "drink r = withdraw(100, 50)\n")
+    interp = _run(_WITHDRAW + "drink r = withdraw(100, 50)\n",
+                  policy_text='policy p\nwhen action == "withdraw" => ALLOW\n'
+                              'when true => DENY\n',
+                  authority="admin")
     proof = interp._last_proof
     assert proof is not None
     assert proof.verdict == TarlVerdict.ALLOW
-    assert any(e["result"] == "pass" for e in proof.trace)
+    assert proof.rule_index == 0
+
+
+def test_contract_missing_policy_denies_with_proof():
+    with pytest.raises(GovernanceViolation) as exc:
+        _run(_WITHDRAW + "drink r = withdraw(100, 50)\n")
+    proof = exc.value.proof
+    assert proof is not None
+    assert proof.verdict == TarlVerdict.DENY
 
 
 def test_contract_deny_carries_proof():
     with pytest.raises(GovernanceViolation) as exc:
-        _run(_WITHDRAW + "drink r = withdraw(100, 200)\n")
+        _run(_WITHDRAW + "drink r = withdraw(100, 200)\n",
+             policy_text='policy p\nwhen action == "withdraw" => ALLOW\n'
+                         'when true => DENY\n',
+             authority="admin")
     proof = exc.value.proof
     assert proof is not None
     assert proof.verdict == TarlVerdict.DENY

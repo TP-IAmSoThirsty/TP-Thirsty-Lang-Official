@@ -56,6 +56,7 @@ from utf.thirsty_lang.ast import (
     StringLiteral,
     StructDecl,
     SymbolExpr,
+    SymbolStmt,
     ThrowStmt,
     UnaryOp,
     VariableDecl,
@@ -317,6 +318,8 @@ class Interpreter:
             return self._execute_variable_decl(stmt)
         elif isinstance(stmt, AssignStmt):
             return self._execute_assign(stmt)
+        elif isinstance(stmt, SymbolStmt):
+            return self._execute_symbol_stmt(stmt)
         elif isinstance(stmt, IfStmt):
             return self._execute_if(stmt)
         elif isinstance(stmt, WhileStmt):
@@ -399,6 +402,10 @@ class Interpreter:
                     f"Cannot assign member '{stmt.target.member}' on "
                     f"{type(obj).__name__}")
         return value
+
+    def _execute_symbol_stmt(self, stmt: SymbolStmt) -> object:
+        self.env.define(stmt.symbol_name, stmt.symbol_name, is_mut=False)
+        return None
 
     def _execute_if(self, stmt: IfStmt) -> object:
         condition = self._evaluate(stmt.condition)
@@ -956,6 +963,17 @@ class Interpreter:
         if phase == "entry":
             # TARL policy routing (deny-by-default access control). A policy
             # proof supersedes the contract proof as the boundary certificate.
+            if self.mode == "governed" and decl is not None and (
+                    self.tarl_runtime is None or self.authority is None):
+                reason = (
+                    "governed function requires a policy engine and authority"
+                )
+                deny = self._make_contract_proof(
+                    decl, phase, context, TarlVerdict.DENY, reason,
+                    trace + [{"kind": "fail-closed", "phase": phase,
+                              "reason": reason}])
+                self._last_proof = deny
+                return (False, reason, deny)
             if self.tarl_runtime is not None and self.authority is not None:
                 # Hardened-mode prerequisites fail closed before policy routing.
                 action_name = decl.name if decl is not None else "<call>"
@@ -1014,6 +1032,8 @@ class Interpreter:
             return Exception(expr.value)
         elif isinstance(expr, QuenchedLiteral):
             return {"type": expr.type_param, "value": self._evaluate(expr.value) if expr.value else None}
+        elif isinstance(expr, AssignStmt):
+            raise RuntimeError("assignment cannot be used as an expression")
         elif isinstance(expr, Identifier):
             if expr.name == "__error__":
                 return None
@@ -1188,6 +1208,11 @@ class Interpreter:
     def _evaluate_combine(self, expr: CombineExpr) -> object:
         left = self._evaluate_impl(expr.left)
         right = self._evaluate_impl(expr.right)
+        if isinstance(left, bool) or isinstance(right, bool):
+            if expr.op == "^":
+                return bool(left) and bool(right)
+            if expr.op == "||":
+                return bool(left) or bool(right)
         if isinstance(left, dict) and isinstance(right, dict):
             merged = dict(left)
             merged.update(right)

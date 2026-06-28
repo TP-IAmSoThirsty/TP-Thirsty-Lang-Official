@@ -258,6 +258,10 @@ Symbolic security expressions with 9 core symbols.
 - AND-combine: `^`
 - OR-combine: `||`
 
+For boolean operands, `^` evaluates as logical AND and `||` evaluates as
+logical OR. For structured operands, `^`/`||` keep their runtime composition
+behavior: dictionaries merge and reservoirs concatenate.
+
 All expressions are SHA-256 canonicalized.
 
 ---

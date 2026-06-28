@@ -52,7 +52,7 @@ from utf.thirsty_lang.ast import (
     Stmt,
     StringLiteral,
     StructDecl,
-    SymbolExpr,
+    SymbolStmt,
     ThrowStmt,
     UnaryOp,
     VariableDecl,
@@ -696,7 +696,8 @@ class Parser:
         start = self._advance()
         name_token = self._expect(TokenType.IDENTIFIER, "E901",
                                   detail="Expected TSCG symbol name")
-        return SymbolExpr(symbol_name=name_token.lexeme, span=self._span(start))
+        self._match(TokenType.SEMICOLON)
+        return SymbolStmt(symbol_name=name_token.lexeme, span=self._span(start))
 
     def _parse_expr_statement(self) -> Stmt:
         start = self._peek()

@@ -46,13 +46,19 @@ class TestContracts:
         it = _interp(
             'module m: governed\n'
             'glass dbl(x) requires x > 0 ensures result == x * 2 '
-            '{ return x * 2 }\n')
+            '{ return x * 2 }\n',
+            policy_text='policy p\nwhen action == "dbl" => ALLOW\n'
+                        'when true => DENY\n',
+            authority='admin')
         assert it.env.get("dbl")(5) == 10
 
     def test_ensures_fail_denies(self):
         it = _interp(
             'module m: governed\n'
-            'glass bad(x) ensures result > 100 { return x * 2 }\n')
+            'glass bad(x) ensures result > 100 { return x * 2 }\n',
+            policy_text='policy p\nwhen action == "bad" => ALLOW\n'
+                        'when true => DENY\n',
+            authority='admin')
         with pytest.raises(GovernanceViolation) as e:
             it.env.get("bad")(5)
         assert "postcondition" in e.value.reason
@@ -60,7 +66,10 @@ class TestContracts:
     def test_invariant_entry_and_exit(self):
         it = _interp(
             'module m: governed\n'
-            'glass f(x) invariant x >= 0 { return x }\n')
+            'glass f(x) invariant x >= 0 { return x }\n',
+            policy_text='policy p\nwhen action == "f" => ALLOW\n'
+                        'when true => DENY\n',
+            authority='admin')
         assert it.env.get("f")(3) == 3
         with pytest.raises(GovernanceViolation):
             it.env.get("f")(-1)
