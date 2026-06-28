@@ -73,6 +73,16 @@ def main():
         help='Reject proofs bound to this policy hash (repeatable)',
     )
     verify_parser.add_argument(
+        '--revocation-store', default=None, metavar='DB',
+        help='Durable revocation store (SQLite); revoked hashes are loaded and '
+             'rejected (combine with --revoked-policy-hash)',
+    )
+    verify_parser.add_argument(
+        '--replay-db', default=None, metavar='DB',
+        help='Durable replay store (SQLite); a proof already recorded here is '
+             'rejected as a replay across processes',
+    )
+    verify_parser.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON'
     )
 
@@ -104,7 +114,23 @@ def main():
         help='Path to audit database (default: tarl_audit.db)',
     )
     audit_chain.add_argument(
+        '--checkpoint', default=None, metavar='FILE',
+        help='Trusted external head checkpoint to compare against (detects '
+             'suffix rewrite/truncation); see "audit checkpoint"',
+    )
+    audit_chain.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON'
+    )
+    audit_checkpoint = audit_sub.add_parser(
+        'checkpoint', help='Write the current audit chain head to a file'
+    )
+    audit_checkpoint.add_argument(
+        '--db', default='tarl_audit.db',
+        help='Path to audit database (default: tarl_audit.db)',
+    )
+    audit_checkpoint.add_argument(
+        '--out', '-o', default=None, metavar='FILE',
+        help='File to write the head hash to (default: stdout)',
     )
     audit_query = audit_sub.add_parser(
         'query', help='Query stored evaluation proofs'
@@ -132,6 +158,31 @@ def main():
     )
     audit_query.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON array'
+    )
+
+    # revoke
+    revoke_parser = subparsers.add_parser(
+        'revoke', help='Manage the durable policy-revocation store'
+    )
+    revoke_parser.add_argument(
+        'policy_hash', nargs='?', default=None,
+        help='Policy hash to revoke (e.g. sha256:...)',
+    )
+    revoke_parser.add_argument(
+        '--store', default='tarl_revocations.db', metavar='DB',
+        help='Path to revocation store (default: tarl_revocations.db)',
+    )
+    revoke_parser.add_argument(
+        '--reason', default='', help='Optional reason recorded with the entry',
+    )
+    revoke_parser.add_argument(
+        '--remove', action='store_true', help='Un-revoke the given policy hash',
+    )
+    revoke_parser.add_argument(
+        '--list', action='store_true', help='List all revoked policy hashes',
+    )
+    revoke_parser.add_argument(
+        '--json', '-j', action='store_true', help='Output as JSON'
     )
 
     # explain
@@ -203,6 +254,8 @@ def main():
         _cmd_lint(args)
     elif args.command == 'audit':
         _cmd_audit(args)
+    elif args.command == 'revoke':
+        _cmd_revoke(args)
     elif args.command == 'explain':
         _cmd_explain(args)
     elif args.command == 'test':
@@ -273,14 +326,23 @@ def _cmd_verify(args):
             print(f"Error reading policy: {e}", file=sys.stderr)
             sys.exit(1)
 
-    revoked = getattr(args, "revoked_policy_hash", None)
+    revoked = set(getattr(args, "revoked_policy_hash", None) or [])
+    if getattr(args, "revocation_store", None):
+        from utf.tarl.durable import RevocationStore
+        with RevocationStore(args.revocation_store) as store:
+            revoked |= store.all()
+    replay_guard = None
+    if getattr(args, "replay_db", None):
+        from utf.tarl.durable import DurableReplayGuard
+        replay_guard = DurableReplayGuard(args.replay_db)
     verifier = ProofVerifier(
         require_signature=getattr(args, "require_signature", False),
         allowed_signature_algorithms=(
             {"ed25519"} if getattr(args, "ed25519_only", False) else None
         ),
         max_age_seconds=getattr(args, "max_age", None),
-        revoked_policy_hashes=set(revoked) if revoked else None,
+        revoked_policy_hashes=revoked or None,
+        replay_guard=replay_guard,
     )
     if args.hmac_key:
         try:
@@ -298,6 +360,8 @@ def _cmd_verify(args):
             sys.exit(1)
 
     result = verifier.verify(proof, policy_source=policy_source)
+    if replay_guard is not None:
+        replay_guard.close()
 
     if args.json:
         print(json.dumps({
@@ -341,9 +405,17 @@ def _cmd_audit(args):
     from utf.tarl.archive import TarlAuditArchive
 
     if args.audit_command == 'verify-chain':
+        expected_head = None
+        if getattr(args, "checkpoint", None):
+            try:
+                with open(args.checkpoint) as f:
+                    expected_head = f.read().strip()
+            except OSError as e:
+                print(f"Error reading checkpoint: {e}", file=sys.stderr)
+                sys.exit(1)
         try:
             with TarlAuditArchive(args.db) as arc:
-                result = arc.verify_chain()
+                result = arc.verify_chain(expected_head=expected_head)
         except Exception as e:
             print(f"Error reading archive: {e}", file=sys.stderr)
             sys.exit(1)
@@ -356,9 +428,24 @@ def _cmd_audit(args):
             print(result)
         sys.exit(0 if result.valid else 1)
 
+    if args.audit_command == 'checkpoint':
+        try:
+            with TarlAuditArchive(args.db) as arc:
+                head = arc.head_hash()
+        except Exception as e:
+            print(f"Error reading archive: {e}", file=sys.stderr)
+            sys.exit(1)
+        if getattr(args, "out", None):
+            with open(args.out, "w") as f:
+                f.write(head + "\n")
+            print(f"Wrote checkpoint {head} to {args.out}")
+        else:
+            print(head)
+        sys.exit(0)
+
     if args.audit_command != 'query':
-        print("Usage: tarl audit (query | verify-chain) [options]",
-              file=sys.stderr)
+        print("Usage: tarl audit (query | verify-chain | checkpoint) "
+              "[options]", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -385,6 +472,44 @@ def _cmd_audit(args):
                 f"rule={p.rule_index:<3}{flag}"
             )
         print(f"\n{len(proofs)} proof(s) returned.")
+
+
+# ── revoke ───────────────────────────────────────────────────────────────────
+
+def _cmd_revoke(args):
+    from utf.tarl.durable import RevocationStore
+
+    with RevocationStore(args.store) as store:
+        if args.list:
+            entries = store.entries()
+            if args.json:
+                print(json.dumps([
+                    {"policy_hash": h, "revoked_at": t, "reason": r}
+                    for h, t, r in entries
+                ], indent=2))
+            else:
+                if not entries:
+                    print("No revoked policies.")
+                for h, t, r in entries:
+                    suffix = f"  ({r})" if r else ""
+                    print(f"{t}  {h}{suffix}")
+            sys.exit(0)
+
+        if not args.policy_hash:
+            print("Usage: tarl revoke <policy_hash> | --list | "
+                  "--remove <policy_hash>", file=sys.stderr)
+            sys.exit(1)
+
+        if args.remove:
+            removed = store.remove(args.policy_hash)
+            print(f"{'Removed' if removed else 'Not present'}: "
+                  f"{args.policy_hash}")
+            sys.exit(0)
+
+        added = store.add(args.policy_hash, reason=args.reason)
+        print(f"{'Revoked' if added else 'Already revoked'}: "
+              f"{args.policy_hash}")
+        sys.exit(0)
 
 
 # ── explain ──────────────────────────────────────────────────────────────────

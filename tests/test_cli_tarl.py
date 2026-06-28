@@ -233,6 +233,100 @@ def test_verify_with_ed25519_key(monkeypatch, tmp_path):
     assert exc.value.code == 0
 
 
+# --- revoke (durable store) -----------------------------------------------
+
+def test_revoke_add_list_remove(monkeypatch, tmp_path, capsys):
+    store = str(tmp_path / "rev.db")
+    _argv(monkeypatch, "tarl", "revoke", "sha256:abc", "--store", store,
+          "--reason", "leaked")
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
+    assert "Revoked" in capsys.readouterr().out
+
+    _argv(monkeypatch, "tarl", "revoke", "--store", store, "--list", "--json")
+    with pytest.raises(SystemExit):
+        tarl_cli.main()
+    assert "sha256:abc" in capsys.readouterr().out
+
+    _argv(monkeypatch, "tarl", "revoke", "sha256:abc", "--store", store,
+          "--remove")
+    with pytest.raises(SystemExit):
+        tarl_cli.main()
+    assert "Removed" in capsys.readouterr().out
+
+
+def test_revoke_list_empty(monkeypatch, tmp_path, capsys):
+    _argv(monkeypatch, "tarl", "revoke", "--store", str(tmp_path / "r.db"),
+          "--list")
+    with pytest.raises(SystemExit):
+        tarl_cli.main()
+    assert "No revoked policies" in capsys.readouterr().out
+
+
+def test_revoke_no_args(monkeypatch, tmp_path):
+    _argv(monkeypatch, "tarl", "revoke", "--store", str(tmp_path / "r.db"))
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 1
+
+
+def test_verify_with_revocation_store(monkeypatch, tmp_path, capsys):
+    from utf.tarl.durable import RevocationStore
+    proof_file = _proof_file(tmp_path)
+    from utf.tarl.spec import TarlProof
+    proof = TarlProof.from_json((tmp_path / "proof.json").read_text())
+    store = str(tmp_path / "rev.db")
+    with RevocationStore(store) as rs:
+        rs.add(proof.policy_hash)
+    _argv(monkeypatch, "tarl", "verify", proof_file,
+          "--revocation-store", store)
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 1
+
+
+def test_verify_with_replay_db_rejects_second(monkeypatch, tmp_path):
+    proof_file, public_hex = _ed25519_proof_file(tmp_path)
+    replay_db = str(tmp_path / "replay.db")
+    args = ("tarl", "verify", proof_file, "--ed25519-key", f"ed1:{public_hex}",
+            "--replay-db", replay_db)
+    _argv(monkeypatch, *args)
+    with pytest.raises(SystemExit) as first:
+        tarl_cli.main()
+    assert first.value.code == 0
+    _argv(monkeypatch, *args)
+    with pytest.raises(SystemExit) as second:
+        tarl_cli.main()
+    assert second.value.code == 1
+
+
+# --- audit checkpoint -----------------------------------------------------
+
+def test_audit_checkpoint_and_verify(monkeypatch, tmp_path, capsys):
+    db = str(tmp_path / "a.db")
+    out = str(tmp_path / "head.txt")
+    _argv(monkeypatch, "tarl", "audit", "checkpoint", "--db", db, "--out", out)
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
+    assert "Wrote checkpoint" in capsys.readouterr().out
+
+    _argv(monkeypatch, "tarl", "audit", "verify-chain", "--db", db,
+          "--checkpoint", out)
+    with pytest.raises(SystemExit) as exc:
+        tarl_cli.main()
+    assert exc.value.code == 0
+
+
+def test_audit_checkpoint_stdout(monkeypatch, tmp_path, capsys):
+    db = str(tmp_path / "a.db")
+    _argv(monkeypatch, "tarl", "audit", "checkpoint", "--db", db)
+    with pytest.raises(SystemExit):
+        tarl_cli.main()
+    assert "sha256:" in capsys.readouterr().out
+
+
 # --- analyze (z3) ---------------------------------------------------------
 
 pytest.importorskip("z3")
