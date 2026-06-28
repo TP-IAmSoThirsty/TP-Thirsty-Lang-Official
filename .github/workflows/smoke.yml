@@ -43,6 +43,64 @@ jobs:
           echo "--- thirst-of-gods check gods.thirstofgods"
           thirst-of-gods check src/utf/examples/gods.thirstofgods
 
+  production-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install package + test extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Production-readiness test suites
+        run: |
+          pytest -q \
+            tests/test_production_acceptance.py \
+            tests/test_broker_unified_gate.py \
+            tests/test_durable_state.py \
+            tests/test_keystore.py
+
+      - name: End-to-end hardened run with file-based keys
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          tarl keygen authority-issuer --key-id issuer-1 --out "$work/issuer.key"
+          tarl keygen proof-signer --key-id signer-1 --out "$work/signer.key"
+          # Issue a signed authority token from the generated issuer key.
+          python - "$work" <<'PY'
+          import sys
+          from utf.tarl import keystore
+          from utf.tarl.authority import AuthorityIssuer
+          work = sys.argv[1]
+          issuer = keystore.load(f"{work}/issuer.key")
+          claim = AuthorityIssuer(issuer.key_id, issuer.private_bytes()).issue(
+              "ops", grants=("write",))
+          open(f"{work}/token.json", "w").write(claim.to_json())
+          PY
+          printf 'policy p\nwhen action == "import" => ALLOW\nwhen action == "write" => ALLOW\nwhen true => DENY\n' > "$work/allow.tarl"
+          printf 'policy p\nwhen action == "import" => ALLOW\nwhen true => DENY\n' > "$work/deny.tarl"
+          printf 'module m: governed\nimport "thirst::log" as log\ndrink _ = log.info("governed-hello")\n' > "$work/app.thirsty"
+          echo "--- expect ALLOW (granted)"
+          thirsty run "$work/app.thirsty" --thirst-level governed --hardened \
+            --policy "$work/allow.tarl" --authority-token "$work/token.json" \
+            --authority-key-file "$work/issuer.key.pub" \
+            --sign-proofs-file "$work/signer.key"
+          echo "--- expect DENY (fail closed, exit 2)"
+          if thirsty run "$work/app.thirsty" --thirst-level governed --hardened \
+            --policy "$work/deny.tarl" --authority-token "$work/token.json" \
+            --authority-key-file "$work/issuer.key.pub" \
+            --sign-proofs-file "$work/signer.key"; then
+            echo "ERROR: ungranted effect was not denied" >&2
+            exit 1
+          fi
+          echo "production-acceptance OK"
+
   package-smoke:
     runs-on: ubuntu-latest
     strategy:

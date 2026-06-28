@@ -1,6 +1,6 @@
 # Thirsty-Lang: A Governance-First Language for Accountable Execution
 
-**Version:** 0.5.0 (alpha) · **Stack:** Universal Thirsty Family (UTF)
+**Version:** 0.7.0 · **Stack:** Universal Thirsty Family (UTF)
 **Copyright:** 2026 Thirsty's Projects LLC · **License:** Apache-2.0
 **Status of claims:** every capability below is marked *Real* (implemented and
 covered by a test) or *Roadmap / Deferred* (reserved surface, not yet enforced).
@@ -27,7 +27,7 @@ missing authority, a failed signature check, or an unavailable gate all resolve 
 
 This paper describes the language, its governance model, the T.A.R.L. policy
 engine and proof system, the offensive threat model that scopes its guarantees,
-and the engineering state of the 0.5.0 release.
+and the engineering state of the 0.7.0 release.
 
 ---
 
@@ -299,7 +299,7 @@ emitted manifest (challenge C034). Governance loss is never silent.
 
 ## 8. Security posture: covered vs. deferred
 
-The threat catalog (C001–C050) is the source of truth. As of 0.5.0:
+The threat catalog (C001–C050) is the source of truth. As of 0.7.0:
 
 Every challenge C001–C050 is now **Covered (test-backed)**. Highlights:
 
@@ -324,15 +324,22 @@ Every challenge C001–C050 is now **Covered (test-backed)**. Highlights:
   on distinct signed approvals (C050); the linter flags broad/ungated ALLOW
   (C039).
 
-**Remaining work is breadth and operations, not a known critical bypass:** the
-shipped stdlib adapters use the (equivalent) interpreter gate rather than all
-routing through `CapabilityBroker`; durable cross-process replay/audit state and
-key provisioning/rotation are left to the embedding; automatic schema derivation
-from a policy is future work. See THREAT_MODEL.md §"Remaining Gaps".
+**Operational readiness (0.7.0).** The three items previously left to the
+embedder are now implemented in-tree: the in-language capability gate routes
+through the same `CapabilityBroker` as the out-of-language adapters (one
+enforcement path, with optional `PathGuard` confinement on file targets);
+`utf.tarl.durable` provides a SQLite-backed `DurableReplayGuard` and
+`RevocationStore` plus an external audit-chain checkpoint; and `utf.tarl.keystore`
+/ `tarl keygen` provide a defined on-disk key format, file-based loading, and a
+rotation path. What genuinely remains with the embedder is *secret custody* — the
+durable stores and key files live wherever the deployment puts them (vault, HSM,
+encrypted volume), and automatic schema derivation from a policy is still future
+work. See `docs/PRODUCTION_DEPLOYMENT.md` for the deployment checklist and
+THREAT_MODEL.md §"Remaining Gaps".
 
 ---
 
-## 9. Engineering state (0.5.0)
+## 9. Engineering state (0.7.0)
 
 | Property | State |
 |---|---|
@@ -344,12 +351,13 @@ from a policy is future work. See THREAT_MODEL.md §"Remaining Gaps".
 | Platform | Windows/macOS/Linux; UTF-8-safe CLI output on Windows code pages |
 
 The reference implementation is an interpreter. The governance substrate meets
-its own hardened-runtime acceptance bar (§8); the remaining work is operational
-breadth — routing every shipped adapter through the broker, durable
-cross-process replay/audit state, and deployment key management — rather than a
-known critical bypass. Treat it as **release-candidate** for governed execution
-and audit, with those operational items provisioned by the embedding before
-authorizing real-world high-risk actions.
+its own hardened-runtime acceptance bar (§8), and as of 0.7.0 the operational
+items that were previously deferred — adapter routing through the broker,
+durable cross-process replay/audit state, and deployment key management — are
+implemented in-tree and exercised by a CI `production-acceptance` job. Treat it
+as **production-ready** for governed execution and audit once the deployment
+provisions secret custody for the durable stores and trust-root key files per
+`docs/PRODUCTION_DEPLOYMENT.md`.
 
 ---
 
@@ -377,11 +385,12 @@ verdict and policy hash, and exits non-zero.
 Thirsty-Lang makes authorization a property of the runtime rather than a
 convention of the code: in governed mode no effect precedes an explicit ALLOW,
 every decision carries a verifiable proof, and every "secure" claim is pinned to a
-test or labeled as roadmap. The 0.5.0 release closes the import, build, parser, and
-proof-downgrade bypasses in the offensive catalog and records the rest with
-severity and next steps. The remaining work — authority provenance, tamper-evident
-audit, replay/downgrade rejection, and universal adapter brokering — is what
-stands between the current alpha and a deployable governance substrate.
+test or labeled as roadmap. Through 0.7.0 the offensive catalog (C001–C050) is
+closed, and the operational substrate — authority provenance, tamper-evident
+audit, replay/downgrade rejection, universal adapter brokering, durable
+cross-process state, and deployment key management — is implemented in-tree and
+gated in CI. What remains for a deployment is secret custody for the durable
+stores and trust-root keys, per `docs/PRODUCTION_DEPLOYMENT.md`.
 
 ---
 
