@@ -82,9 +82,31 @@ pour main
 ```thirsty
 module loop: core
 
-refill(drink x = 0; x < 10; mut x = x + 1) {
+// while form
+drink mut i = 0
+refill (i < 3) { pour i  i = i + 1 }
+
+// for-each form
+refill (x in [1, 2, 3]) { pour x }
+
+// C-style form — the loop counter is implicitly mutable
+refill (drink x = 0; x < 10; x = x + 1) {
     pour x
 }
+
+// repeat N times
+times 3 {
+    pour "hydrate"
+}
+```
+
+Anonymous functions (lambdas) are first-class values:
+
+```thirsty
+module lambda: core
+
+drink add = glass(a, b) { return a + b }
+pour add(2, 3)
 ```
 
 ```thirsty

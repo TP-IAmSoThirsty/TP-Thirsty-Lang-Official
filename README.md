@@ -95,6 +95,41 @@ pour answer
 - **JS transpilation** — `thirsty build hello.thirsty --target js` produces valid JavaScript
 - **11 CLI subcommands** — run, repl, fmt, new, build, govern, add, audit, lock, doctor, lsp, docs. All of them work.
 
+**Control flow, loops, and functions:**
+
+```thirsty
+module loops: core
+
+// while loop
+drink mut i = 0
+refill (i < 3) { i = i + 1 }
+
+// for-each loop
+refill (x in [10, 20, 30]) { pour x }
+
+// C-style loop — the counter is implicitly mutable
+refill (drink j = 0; j < 5; j = j + 1) { pour j }
+
+// repeat N times
+times 3 { pour "drink water" }
+
+// recursion, closures, and anonymous functions (lambdas)
+glass make_adder(n) { return glass(x) { return x + n } }
+drink add10 = make_adder(10)
+pour add10(5)             // 15
+```
+
+Fountains (classes) support the `this` keyword, field default initializers, and
+member assignment:
+
+```thirsty
+fountain Counter {
+    drink count: Int = 0
+    glass increment() { this.count = this.count + 1 }
+    glass get() { return this.count }
+}
+```
+
 ### 🟣 Tier 2: Thirst of Gods
 
 Object-oriented programming, async (`cascade`/`await`), and structured error handling (`spillage`/`cleanup`/`throw`) — all validated by a **divine contract validator**.
@@ -241,7 +276,7 @@ lsp      → Start Language Server Protocol endpoint
 docs     → Generate API documentation
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.7.1`.
+Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.8.0`.
 
 ---
 
@@ -282,13 +317,13 @@ Default-DENY at every boundary. Data cannot flow upward without clearing the tie
 
 ## Verification
 
-**1187 tests pass.** Every time. Before every commit. No regressions.
+**1198 tests pass.** Every time. Before every commit. No regressions.
 
 ```
 $ python -m pytest tests/ -q
 ........................................................................ [ 96%]
 .........................................                                [100%]
-1187 passed, 1 skipped in 4.5s
+1198 passed, 1 skipped in 4.5s
 ```
 
 The test suite covers: lexer, parser, checker, interpreter, formatter, module system, REPL, JS transpilation, T.A.R.L. policies, Shadow Thirst analyzers, TSCG parsing/canonicalization, TSCG-B frame encoding/decoding, Thirst of Gods divine contract validation, CLI commands, and end-to-end program execution.
@@ -301,7 +336,7 @@ Thirsty-Lang is now available on PyPI.
 
 **For pinned installs:**
 ```bash
-pip install thirsty-lang==0.7.1
+pip install thirsty-lang==0.8.0
 ```
 
 **For upgrade installs:**

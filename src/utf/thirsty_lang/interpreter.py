@@ -37,6 +37,7 @@ from utf.thirsty_lang.ast import (
     ImportStmt,
     InterfaceDecl,
     IntLiteral,
+    LambdaExpr,
     MemberAccess,
     MorphDef,
     NewExpr,
@@ -58,6 +59,7 @@ from utf.thirsty_lang.ast import (
     SymbolExpr,
     SymbolStmt,
     ThrowStmt,
+    TimesStmt,
     UnaryOp,
     VariableDecl,
     WhileStmt,
@@ -332,6 +334,8 @@ class Interpreter:
             return self._execute_while(stmt)
         elif isinstance(stmt, ForStmt):
             return self._execute_for(stmt)
+        elif isinstance(stmt, TimesStmt):
+            return self._execute_times(stmt)
         elif isinstance(stmt, ReturnStmt):
             return self._execute_return(stmt)
         elif isinstance(stmt, PourStmt):
@@ -445,6 +449,15 @@ class Interpreter:
                         return result
                 finally:
                     self.env = old_env
+        return result
+
+    def _execute_times(self, stmt: TimesStmt) -> object:
+        count = self._evaluate(stmt.count)
+        result = None
+        for _ in range(int(count)):
+            result = self._execute(stmt.body)
+            if isinstance(result, (ReturnException, SpillageException)):
+                return result
         return result
 
     def _execute_return(self, stmt: ReturnStmt) -> object:
@@ -688,7 +701,7 @@ class Interpreter:
         except Exception as e:
             raise SpillageException(str(e)) from e
 
-    def _execute_function_decl(self, stmt: FunctionDecl) -> object:
+    def _make_closure(self, params, body):
         # Capture the defining environment so the function closes over its
         # lexical scope (enclosing locals), rather than over whatever scope
         # happens to be active at call time.
@@ -697,17 +710,21 @@ class Interpreter:
         def fn(*args):
             old_env = self.env
             self.env = def_env.enter_scope()
-            for i, (pname, _) in enumerate(stmt.params):
+            for i, (pname, _) in enumerate(params):
                 val = args[i] if i < len(args) else None
                 self.env.define(pname, val, is_mut=False)
             result = None
             try:
-                result = self._execute(stmt.body)
+                result = self._execute(body)
             except ReturnException as e:
                 result = e.value
             finally:
                 self.env = old_env
             return result
+        return fn
+
+    def _execute_function_decl(self, stmt: FunctionDecl) -> object:
+        fn = self._make_closure(stmt.params, stmt.body)
         self.env.define(stmt.name, fn, is_mut=False)
         return fn
 
@@ -1143,6 +1160,8 @@ class Interpreter:
             return self._evaluate_binary(expr)
         elif isinstance(expr, UnaryOp):
             return self._evaluate_unary(expr)
+        elif isinstance(expr, LambdaExpr):
+            return self._make_closure(expr.params, expr.body)
         elif isinstance(expr, CallExpr):
             return self._evaluate_call(expr)
         elif isinstance(expr, PipeExpr):

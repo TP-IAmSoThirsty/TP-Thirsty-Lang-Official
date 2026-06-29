@@ -33,6 +33,7 @@ from utf.thirsty_lang.ast import (
     ImportStmt,
     InterfaceDecl,
     IntLiteral,
+    LambdaExpr,
     MemberAccess,
     ModuleHeader,
     MorphDef,
@@ -54,6 +55,7 @@ from utf.thirsty_lang.ast import (
     StructDecl,
     SymbolStmt,
     ThrowStmt,
+    TimesStmt,
     UnaryOp,
     VariableDecl,
     WhileStmt,
@@ -228,6 +230,8 @@ class Parser:
             return self._parse_if_stmt()
         elif t == TokenType.REFILL:
             return self._parse_refill_stmt()
+        elif t == TokenType.TIMES:
+            return self._parse_times_stmt()
         elif t == TokenType.RETURN:
             return self._parse_return_stmt()
         elif t == TokenType.IMPORT:
@@ -394,10 +398,10 @@ class Parser:
         return IfStmt(condition=condition, then_block=then_block,
                       else_block=else_block, span=self._span(start))
 
-    def _parse_refill_stmt(self) -> WhileStmt | ForStmt:
+    def _parse_refill_stmt(self) -> WhileStmt | ForStmt | BlockStmt:
         start = self._advance()  # refill
         self._expect(TokenType.LPAREN, "E901", detail="Expected '(' after 'refill'")
-        # Try to detect for-loop: refill(var in iterable)
+        # for-each loop: refill(var in iterable)
         if self._check(TokenType.IDENTIFIER) and self._peek_next(1).type == TokenType.IN:
             var_token = self._advance()
             self._advance()  # in
@@ -406,11 +410,53 @@ class Parser:
             body = self._parse_block()
             return ForStmt(variable=Identifier(name=var_token.lexeme, span=self._span(var_token)),
                            iterable=iterable, body=body, span=self._span(start))
+        # C-style for: refill(init; cond; step). A declaration initializer
+        # (drink/let) unambiguously marks this form; an expression initializer
+        # is distinguished from a plain while condition by the trailing ';'.
+        if self._check(TokenType.DRINK):
+            init = self._parse_variable_decl()  # consumes its own optional ';'
+            return self._finish_cstyle_for(start, init)
+        if self._check(TokenType.LET):
+            init = self._parse_let_decl()
+            return self._finish_cstyle_for(start, init)
+        first = self._parse_expr()
+        if self._match(TokenType.SEMICOLON):
+            expr_init = first if isinstance(first, AssignStmt) else ExprStmt(
+                expr=first, span=first.span)
+            return self._finish_cstyle_for(start, expr_init)
         # While loop: refill(condition)
-        condition = self._parse_expr()
         self._expect(TokenType.RPAREN, "E901", detail="Expected ')' after condition")
         body = self._parse_block()
-        return WhileStmt(condition=condition, body=body, span=self._span(start))
+        return WhileStmt(condition=first, body=body, span=self._span(start))
+
+    def _finish_cstyle_for(self, start, init) -> BlockStmt:
+        """Parse `cond; step) { body }` after the init clause and desugar the
+        C-style ``refill(init; cond; step)`` into an init statement followed by
+        a while loop whose body ends with the step statement."""
+        # The loop counter is reassigned by the step clause, so a declaration
+        # initializer is implicitly mutable (no `mut` keyword required).
+        if isinstance(init, VariableDecl):
+            init.is_mut = True
+        condition = self._parse_expr()
+        self._expect(TokenType.SEMICOLON, "E901",
+                     detail="Expected ';' after loop condition")
+        step_expr = self._parse_expr()
+        step = step_expr if isinstance(step_expr, AssignStmt) else ExprStmt(
+            expr=step_expr, span=step_expr.span)
+        self._expect(TokenType.RPAREN, "E901",
+                     detail="Expected ')' after loop step")
+        body = self._parse_block()
+        inner = BlockStmt(statements=list(body.statements) + [step],
+                          span=body.span)
+        loop = WhileStmt(condition=condition, body=inner,
+                         span=self._span(start))
+        return BlockStmt(statements=[init, loop], span=self._span(start))
+
+    def _parse_times_stmt(self) -> TimesStmt:
+        start = self._advance()  # times
+        count = self._parse_expr()
+        body = self._parse_block()
+        return TimesStmt(count=count, body=body, span=self._span(start))
 
     def _parse_return_stmt(self) -> ReturnStmt:
         start = self._advance()
@@ -914,7 +960,22 @@ class Parser:
             return self._parse_new_expr()
         elif t == TokenType.CASCADE:
             return self._parse_cascade_call()
+        elif t == TokenType.GLASS:
+            return self._parse_lambda_expr()
         return None
+
+    def _parse_lambda_expr(self) -> LambdaExpr:
+        """glass(params) [-> type] { body } — anonymous function expression."""
+        start = self._advance()  # glass
+        params = self._parse_params()
+        return_type = None
+        if self._match(TokenType.ARROW):
+            type_token = self._expect(TokenType.IDENTIFIER, "E901",
+                                      detail="Expected return type after '->'")
+            return_type = type_token.lexeme
+        body = self._parse_block()
+        return LambdaExpr(params=params, body=body,
+                          return_type=return_type, span=self._span(start))
 
     def _parse_int_literal(self) -> IntLiteral:
         t = self._advance()

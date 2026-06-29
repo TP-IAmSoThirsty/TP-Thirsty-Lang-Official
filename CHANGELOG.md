@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-29
+
+### Added — Core language features
+
+Three previously-documented-but-unimplemented control-flow/value forms now
+work end-to-end (lexer → parser → checker → interpreter → formatter), with
+coverage in `tests/test_new_language_features.py`.
+
+- **`times N { ... }` loop.** Repeats the body `N` times; the count is any
+  integer expression. `return` propagates out of the loop.
+- **C-style `refill(init; cond; step) { ... }` loop.** Joins the existing
+  `refill (cond)` (while) and `refill (x in xs)` (for-each) forms. A `drink`/
+  `let` initializer's loop counter is implicitly mutable (no `mut` needed).
+  Desugars to an init statement plus a while loop.
+- **Anonymous functions (lambdas).** `glass(params) [-> type] { body }` is now
+  a first-class expression — assignable, passable to higher-order stdlib
+  functions (`thirst::collections` map/filter/reduce), and closes over its
+  defining scope.
+
 ## [0.7.1] - 2026-06-29
 
 ### Fixed — Core language correctness

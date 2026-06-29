@@ -91,6 +91,18 @@ class CallExpr(Expr):
 
 
 @dataclass
+class LambdaExpr(Expr):
+    """glass(params) [-> type] { body } — an anonymous function value.
+
+    ``body`` is a statement node (typically a block); it is annotated ``Any``
+    because the ``Stmt`` base is defined later in this module.
+    """
+    params: list  # list of (name, type_str)
+    body: Any
+    return_type: str | None = None
+
+
+@dataclass
 class NewExpr(Expr):
     class_name: str
     args: list
@@ -226,6 +238,13 @@ class WhileStmt(Stmt):
 class ForStmt(Stmt):
     variable: Identifier
     iterable: Expr
+    body: Stmt
+
+
+@dataclass
+class TimesStmt(Stmt):
+    """times count { body } — repeat the body `count` times."""
+    count: Expr
     body: Stmt
 
 
