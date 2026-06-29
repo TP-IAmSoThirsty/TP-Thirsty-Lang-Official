@@ -142,8 +142,8 @@ class FountainInstance:
         self.cls_decl = cls_decl
         self.fields: dict[str, Any] = {}
         self.methods: dict[str, Any] = {}
-        for fname, _ in cls_decl.fields:
-            self.fields[fname] = None
+        for field_spec in cls_decl.fields:
+            self.fields[field_spec[0]] = None
         for method in cls_decl.methods:
             self.methods[method.name] = method
 
@@ -689,9 +689,14 @@ class Interpreter:
             raise SpillageException(str(e)) from e
 
     def _execute_function_decl(self, stmt: FunctionDecl) -> object:
+        # Capture the defining environment so the function closes over its
+        # lexical scope (enclosing locals), rather than over whatever scope
+        # happens to be active at call time.
+        def_env = self.env
+
         def fn(*args):
             old_env = self.env
-            self.env = self.env.enter_scope()
+            self.env = def_env.enter_scope()
             for i, (pname, _) in enumerate(stmt.params):
                 val = args[i] if i < len(args) else None
                 self.env.define(pname, val, is_mut=False)
@@ -712,9 +717,15 @@ class Interpreter:
             old_env = self.env
             self.env = self.env.enter_scope()
             self.env.define("this", instance, is_mut=False)
+            # Apply field default initializers before running init.
+            for field_spec in stmt.fields:
+                default_expr = field_spec[2] if len(field_spec) > 2 else None
+                if default_expr is not None:
+                    instance.fields[field_spec[0]] = \
+                        self._evaluate(default_expr)
             for method in stmt.methods:
                 if method.name == "init":
-                    self._call_user_fn(method, [instance] + list(args))
+                    self._call_user_fn(method, list(args), this_obj=instance)
             self.env = old_env
             return instance
         self.env.define(stmt.name, constructor, is_mut=False)
@@ -727,14 +738,27 @@ class Interpreter:
             # Control flow (return) and governance denials are not errors —
             # they must propagate, never be caught by spillage handlers.
             raise
-        except SpillageException:
-            for _error_type, handler in stmt.handlers:
-                return self._execute(handler)
+        except SpillageException as exc:
+            for error_var, handler in stmt.handlers:
+                return self._run_spillage_handler(error_var, exc.value, handler)
             raise
-        except Exception:
-            for _error_type, handler in stmt.handlers:
-                return self._execute(handler)
+        except Exception as exc:
+            for error_var, handler in stmt.handlers:
+                return self._run_spillage_handler(error_var, exc, handler)
             raise
+
+    def _run_spillage_handler(self, error_var, err_value, handler) -> object:
+        """Run a spillage error handler, binding the thrown value to the
+        handler's optional name (``error (name) { ... }``)."""
+        if error_var is None:
+            return self._execute(handler)
+        old_env = self.env
+        self.env = self.env.enter_scope()
+        self.env.define(error_var, err_value, is_mut=False)
+        try:
+            return self._execute(handler)
+        finally:
+            self.env = old_env
 
     def _execute_cleanup(self, stmt: CleanupStmt) -> object:
         try:
@@ -1057,11 +1081,26 @@ class Interpreter:
                             proof)
         return (True, "allowed", proof)
 
-    def _call_user_fn(self, func_decl: FunctionDecl, args: list) -> object:
+    def _call_user_fn(self, func_decl: FunctionDecl, args: list,
+                      this_obj: object = None) -> object:
         old_env = self.env
         self.env = self.env.enter_scope()
+        # Bind the receiver for fountain methods. Two conventions are supported:
+        #   * the `this` keyword (no receiver parameter declared), and
+        #   * an explicit leading `self`/`this` parameter.
+        # `this` is always bound so `this.field` resolves; if the method also
+        # declares a leading self parameter, it receives the instance and is
+        # not consumed from the caller's positional arguments.
         context = {}
-        for i, (pname, _) in enumerate(func_decl.params):
+        params = list(func_decl.params)
+        if this_obj is not None:
+            self.env.define("this", this_obj, is_mut=False)
+            if params and params[0][0] in ("self", "this"):
+                recv_name = params[0][0]
+                self.env.define(recv_name, this_obj, is_mut=False)
+                context[recv_name] = this_obj
+                params = params[1:]
+        for i, (pname, _) in enumerate(params):
             val = args[i] if i < len(args) else None
             self.env.define(pname, val, is_mut=False)
             context[pname] = val
@@ -1237,8 +1276,10 @@ class Interpreter:
                 return obj.fields[name]
             method = obj.methods.get(name)
             if method is not None:
-                # Bound method: the instance is passed as the first (self) arg.
-                return lambda *a: self._call_user_fn(method, [obj] + list(a))
+                # Bound method: the instance is bound as `this`, and the call
+                # arguments map to the method's declared params.
+                return lambda *a: self._call_user_fn(
+                    method, list(a), this_obj=obj)
             raise NameError(
                 f"'{obj.cls_decl.name}' has no member '{name}'")
         if isinstance(obj, dict):

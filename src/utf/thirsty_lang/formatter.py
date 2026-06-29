@@ -99,7 +99,15 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
 
     elif isinstance(node, ClassDecl):
         methods = "\n".join(format_stmt(m, indent + 1) for m in node.methods)
-        fields_str = "\n".join(f"{INDENT * (indent + 1)}drink {n}: {t}" for n, t in node.fields)
+
+        def _fmt_field(spec):
+            n, t = spec[0], spec[1]
+            default = spec[2] if len(spec) > 2 else None
+            line = f"{INDENT * (indent + 1)}drink {n}: {t}"
+            if default is not None:
+                line += f" = {format_expr(default)}"
+            return line
+        fields_str = "\n".join(_fmt_field(f) for f in node.fields)
         body_parts = [p for p in [fields_str, methods] if p]
         body = "\n".join(body_parts)
         return f"{prefix}fountain {node.name} {{\n{body}\n{prefix}}}"

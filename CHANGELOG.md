@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-29
+
+### Fixed — Core language correctness
+
+Tier-1 features that were documented but broken at runtime now work. The
+governance layers (T.A.R.L., Shadow Thirst, capability broker, threat-model
+suite) are unchanged. New regression coverage lives in
+`tests/test_language_fixes.py`.
+
+- **Recursion.** Self- and mutual recursion no longer fail the checker's arity
+  analysis (E030). The semantic-analysis hoist pass now registers each
+  function's real signature before any body is checked, so forward references
+  and recursive calls see the correct arity.
+- **Object orientation (`this`).** The parser now accepts the `this` keyword,
+  and method dispatch binds the receiver in the call scope. Member assignment
+  (`this.field = …` / `obj.field = …`) works. Both the `this` keyword and an
+  explicit leading `self`/`this` parameter are supported.
+- **Fountain field defaults.** `drink count: Int = 0` (with or without the
+  `drink` prefix) is initialized at construction instead of being silently
+  dropped.
+- **Closures.** Nested functions capture their defining (lexical) scope rather
+  than the scope active at call time.
+- **Pipe operator.** `|>` now lexes as a single token (bare `|` remains the
+  same operator).
+- **Error binding.** `error (name) { … }` binds the thrown value inside the
+  spillage handler.
+
 ## [0.7.0] - 2026-06-28
 
 ### Added — Production-deployment readiness
