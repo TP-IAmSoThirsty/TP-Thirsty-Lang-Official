@@ -276,7 +276,7 @@ lsp      → Start Language Server Protocol endpoint
 docs     → Generate API documentation
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.8.0`.
+Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.8.1`.
 
 ---
 
@@ -317,13 +317,13 @@ Default-DENY at every boundary. Data cannot flow upward without clearing the tie
 
 ## Verification
 
-**1198 tests pass.** Every time. Before every commit. No regressions.
+**1212 tests pass.** Every time. Before every commit. No regressions.
 
 ```
 $ python -m pytest tests/ -q
 ........................................................................ [ 96%]
 .........................................                                [100%]
-1198 passed, 1 skipped in 4.5s
+1212 passed, 1 skipped in 4.5s
 ```
 
 The test suite covers: lexer, parser, checker, interpreter, formatter, module system, REPL, JS transpilation, T.A.R.L. policies, Shadow Thirst analyzers, TSCG parsing/canonicalization, TSCG-B frame encoding/decoding, Thirst of Gods divine contract validation, CLI commands, and end-to-end program execution.
@@ -336,7 +336,7 @@ Thirsty-Lang is now available on PyPI.
 
 **For pinned installs:**
 ```bash
-pip install thirsty-lang==0.8.0
+pip install thirsty-lang==0.8.1
 ```
 
 **For upgrade installs:**
@@ -346,7 +346,7 @@ pip install --upgrade thirsty-lang
 
 **From source:**
 ```bash
-git clone https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF.git
+git clone https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official.git
 cd Thirstys-Projects-Thirsty-Lang-UTF
 pip install -e .
 ```

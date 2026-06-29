@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-06-29
+
+### Fixed — Adversarial peer-review findings (core language)
+
+Three reproduced defects from an independent 0.8.0 review. Governance code and
+the governance posture are unchanged; these are core lexer/parser/checker/
+interpreter fixes with coverage in `tests/test_review_0_8_1.py`.
+
+- **Subscript indexing.** `reservoir[i]` now parses to a real `Subscript` node
+  and indexes lists (with bounds errors), dicts, and strings — and is a valid
+  assignment target (`xs[0] = v`). Previously the parser had no postfix `[`
+  handler and silently misparsed `xs[1]` as the whole reservoir followed by an
+  orphan literal, with no diagnostic.
+- **Un-annotated return types.** A function without a `-> type` now defaults to
+  the gradual `Any` return, not `Void`, so a value-returning un-annotated
+  function (e.g. the `thirsty new` scaffold) flows into typed operators and
+  self-recursion type-checks instead of false-erroring (`E022`).
+- **Combine operator soundness.** `^`/`||` now require **both** operands to be
+  bool — a mixed `bool ⊕ non-bool` is rejected statically and no longer coerces
+  at runtime (this was a governance **fail-open**: a malformed `requires`
+  predicate could authorize a call). An unsupported combine raises instead of
+  silently dropping the left operand. `^` remains documented as **conjunction
+  (AND), not XOR**.
+
 ## [0.8.0] - 2026-06-29
 
 ### Added — Core language features

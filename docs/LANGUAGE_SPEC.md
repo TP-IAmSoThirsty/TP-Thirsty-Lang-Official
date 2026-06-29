@@ -62,7 +62,7 @@ The base language with water-metaphor syntax.
 | `->` | ARROW | Return type arrow |
 | `(` `)` | LPAREN/RPAREN | Grouping / calls |
 | `{` `}` | LBRACE/RBRACE | Blocks |
-| `[` `]` | LBRACKET/RBRACKET | Indexing (future) |
+| `[` `]` | LBRACKET/RBRACKET | Reservoir literals and indexing (`xs[i]`) |
 | `:` | COLON | Type annotation |
 | `,` | COMMA | Separator |
 
@@ -280,9 +280,12 @@ Symbolic security expressions with 9 core symbols.
 - AND-combine: `^`
 - OR-combine: `||`
 
-For boolean operands, `^` evaluates as logical AND and `||` evaluates as
-logical OR. For structured operands, `^`/`||` keep their runtime composition
-behavior: dictionaries merge and reservoirs concatenate.
+For boolean operands, `^` evaluates as logical **AND** (conjunction — *not*
+XOR, despite the glyph) and `||` evaluates as logical OR. Both operands must be
+bool: a mixed `bool`/non-`bool` combine is a type error (rejected statically and
+refused at runtime) so a malformed predicate fails closed rather than coercing.
+For structured operands, `^`/`||` keep their runtime composition behavior:
+dictionaries merge and reservoirs concatenate.
 
 All expressions are SHA-256 canonicalized.
 

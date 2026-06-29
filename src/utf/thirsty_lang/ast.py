@@ -103,6 +103,13 @@ class LambdaExpr(Expr):
 
 
 @dataclass
+class Subscript(Expr):
+    """obj[index] — index into a reservoir (list), dict, or string."""
+    obj: Expr
+    index: Expr
+
+
+@dataclass
 class NewExpr(Expr):
     class_name: str
     args: list

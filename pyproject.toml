@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thirsty-lang"
-version = "0.8.0"
+version = "0.8.1"
 description = "A governance-first programming language family"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,9 +26,9 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF"
-"Source" = "https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF"
-"Bug Tracker" = "https://github.com/IAmSoThirsty/Thirstys-Projects-Thirsty-Lang-UTF/issues"
+"Homepage" = "https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official"
+"Source" = "https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official"
+"Bug Tracker" = "https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/issues"
 
 [project.scripts]
 thirsty = "utf.thirsty_lang.cli:main"
