@@ -134,10 +134,14 @@ call           = primary { "(" [expr { "," expr }] ")"       /* function call */
 
 primary        = literal
                | identifier
+               | "this"
+               | lambda_expr
                | "(" expr ")"
                | string_expr
                | array_literal
                | struct_literal ;
+
+lambda_expr    = "glass" "(" [param { "," param }] ")" [":" type] block ;
 
 literal        = integer
                | float
@@ -166,6 +170,7 @@ stmt           = variable_decl
                | assign_stmt
                | if_stmt
                | refill_stmt
+               | times_stmt
                | return_stmt
                | import_stmt
                | block
@@ -189,8 +194,15 @@ if_stmt        = "thirsty" "(" expr ")" block
                  { "hydrated" "thirsty" "(" expr ")" block }
                  [ "hydrated" block ] ;
 
-refill_stmt    = "refill" "(" identifier "in" expr ")" block    /* for-loop */
+refill_stmt    = "refill" "(" identifier "in" expr ")" block    /* for-each */
+               | "refill" "(" for_init ";" expr ";" for_step ")" block
+                                                               /* C-style for */
                | "refill" "(" expr ")" block ;                  /* while-loop */
+
+for_init       = variable_decl | assign_stmt | expr ;
+for_step       = assign_stmt | expr ;
+
+times_stmt     = "times" expr block ;                           /* repeat N */
 
 return_stmt    = "return" [expr] ";" ;
 

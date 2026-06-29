@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-Thirsty-Lang is currently in alpha (v0.1.0). Security updates will be applied to the latest release only.
+Thirsty-Lang is currently in alpha (v0.8.0). Security updates will be applied to the latest release only.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.8.x   | :white_check_mark: |
+| < 0.8   | :x:                |
 
 ## Reporting a Vulnerability
 

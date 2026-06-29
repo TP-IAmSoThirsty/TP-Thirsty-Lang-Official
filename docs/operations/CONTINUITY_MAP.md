@@ -1,108 +1,56 @@
 # Operational Continuity Map
 
-Workstream: **Fix operator precedence + governance fail-open** (audit remediation)
-Updated: 2026-06-23
-Branch: `fix/operator-precedence-governance` (off `master`)
+Workstream: **Core-language repair + new control-flow features (0.7.1 → 0.8.0)**
+Updated: 2026-06-29
+Branch: `master`
 Workspace: `thirsty_lang_exploration_0754`
 
 ## Current State
 
-Five audit findings remediated on one branch. Full suite green (652 passed),
-ruff clean. Implemented and test-verified locally; **not committed** (awaiting
-review) and **black not run** (not installed in this environment).
+Two releases shipped from `master`:
 
-## Files Inspected
+- **0.7.1** — corrected Tier-1 core features that were documented but broken at
+  runtime (recursion, `this`/OOP, closures, `|>`, error binding, fountain field
+  defaults). Published to PyPI.
+- **0.8.0** — added three previously-unimplemented forms: the `times N { … }`
+  loop, the C-style `refill(init; cond; step)` loop, and anonymous functions
+  (lambdas, `glass(params) { … }`).
 
-- `src/utf/thirsty_lang/parser.py` — `_parse_expr`, precedence table, unary prefix.
-- `src/utf/thirsty_lang/interpreter.py` — `_gate_capability`, `_enforce_governance`.
-- `src/utf/tarl/spec.py`, `runtime.py`, `verifier.py`, `archive.py` — proof model.
-- `src/utf/thirsty_lang/checker.py`, `diagnostics.py`, `ast.py` — E051/E052.
-- `tests/test_verifiers.py` — taint-alias + cascade→spillage (already covered).
+The governance layers (T.A.R.L., Shadow Thirst, capability broker, hardened
+runtime, threat-model suite) are unchanged and remain the peer-reviewed source
+of truth — see `docs/WHITEPAPER.md` and `docs/THREAT_MODEL.md`.
 
-## Files Created
+## Files Modified (core language)
 
-- `tests/test_parser_precedence.py` — precedence/associativity + overdraft guard.
-- `tests/test_gate_fail_closed.py` — fail-closed gate + proof-carrying contracts.
-- `src/utf/examples/governed_agent_runner/policy.tarl` — wired policy so the one
-  governed example that does I/O runs under enforced (not implied) governance.
-- `docs/operations/CONTINUITY_MAP.md` — this file.
-
-## Files Modified
-
-- `parser.py` — capture operator precedence *before* advancing; left-assoc binary
-  recurses at `op_prec`, right-assoc assign at `op_prec - 1`; `UNARY_PRECEDENCE`
-  (8) for `-`, `NOT_PRECEDENCE` (4) for `not`.
-- `interpreter.py` — `_gate_capability` fail-closed; `_make_decision_proof` +
-  `_make_contract_proof`; contract ALLOW/DENY carry proofs.
-- `checker.py` / `diagnostics.py` / `ast.py` — remove dead E051/E052.
-- `spec.py` / `runtime.py` / `README.md` / `docs/governance_model.md` — proof
-  signing docs-truth (unsigned-by-default, symmetric MAC, no Ed25519).
-- `CHANGELOG.md` — Unreleased entries; corrected 0.4.0 "signed proof" wording.
-- `tests/test_examples.py` — attach sibling `policy.tarl` for governed examples.
-- `tests/test_governance_maximal.py` — `test_gate_inactive_without_policy`
-  rewritten to `test_gate_fail_closed_without_policy` (asserts DENY).
-
-## Files Deleted
-
-None.
-
-## Commands Run
-
-- `PYTHONPATH=src python -m pytest tests/ -q` → **652 passed, 7 subtests**.
-- `PYTHONPATH=src python -m pytest tests/test_parser_precedence.py
-  tests/test_gate_fail_closed.py -q` → **28 passed**.
-- `PYTHONPATH=src python -m ruff check src/ tests/` → **All checks passed**.
-- Interpreter reproductions of the audit's five precedence rows + overdraft
-  guard + fail-closed write (see Tests / Verification).
+- `src/utf/thirsty_lang/lexer.py` — `|>` lexes as a single PIPE token.
+- `src/utf/thirsty_lang/parser.py` — `this`, member-assignment targets, lambda
+  expressions, `times`, and the desugared C-style `refill`.
+- `src/utf/thirsty_lang/checker.py` — recursion hoist (real signatures), `this`,
+  error-binding scope, field-default checking, `times`/lambda checks.
+- `src/utf/thirsty_lang/interpreter.py` — `this` binding + method dispatch,
+  field default initializers, lexical closures (`_make_closure`), `error (name)`
+  binding, `_execute_times`, lambda evaluation.
+- `src/utf/thirsty_lang/ast.py` — `TimesStmt`, `LambdaExpr`.
+- `src/utf/thirsty_lang/formatter.py` — field defaults, `times`, lambdas.
 
 ## Tests / Verification
 
-- **Verified by pytest:** 652 passed (was 623 pre-change; +28 new tests, +1 new
-  `policy.tarl` parse test, −1 renamed test → net +28).
-- **Verified by interpreter:** `2 * 3 + 4` → 10, `10 - 2 - 3` → 5, `20/2/5` → 2,
-  `1 + 2 * 3 + 4` → 11, `2 + 3 == 5` → True; `100 - 200 >= 0` → False; overdraft
-  `withdraw(100,200)` → DENIED, `withdraw(100,50)` → 50; governed `pour` with no
-  policy → DENIED with a DENY proof; core `pour` → runs.
-- **Verified by ruff:** clean across `src/` and `tests/`.
-- **Not verified:** black formatting (black not installed here); full pre-commit
-  hook run.
+- `tests/test_language_fixes.py` — 0.7.1 correctness regressions.
+- `tests/test_new_language_features.py` — 0.8.0 features.
+- Gates green: `ruff check src tests`, `mypy -p utf`, and
+  `pytest tests/ -q --cov=utf --cov-fail-under=90` (1198 passed, ~91% coverage).
 
-## Completed Work
+## Known Failures / Blockers / Risks
 
-All five audit tiers: Critical (precedence), High (fail-closed gate), Medium
-(contract proofs + signing docs-truth), Low (dead diagnostics).
+None. The C-style `refill` is desugared to an init statement plus a while loop,
+so it reuses the existing, tested loop machinery.
 
-## Known Failures
+## Pending / Next Recommended Action
 
-None in the suite.
-
-## Blockers
-
-None.
-
-## Risks
-
-- **Behavioral break (expected):** correct precedence changes the value of any
-  program/test that relied on the old parse. The suite surfaced two such cases,
-  both reviewed and updated as real semantic changes (the fail-open gate test and
-  the governed example), not patched green.
-- **black not run** in this environment; pre-commit `black` could still reformat.
-  ruff passed and new code matches the surrounding black-formatted style.
-- `.pytest_tmp/` is a transient test artifact (untracked); remove before commit.
-
-## Pending Work
-
-- Run `black` / full pre-commit before commit/push.
-- Commit + open PR (not yet done — user has not requested commit/push).
-- Note (`tp` remote is the push target per project convention, not `origin`).
-
-## Next Recommended Action
-
-Run black/pre-commit; if clean, commit on `fix/operator-precedence-governance`
-and open a PR for review. The precedence fix is a breaking semantic correction —
-call that out in the PR.
+Roadmap surface not yet implemented is tracked in `docs/STATUS.md` (rows marked
+**Roadmap**). Releases push to the `tp` remote; tagging `v*` triggers the PyPI
+publish workflow.
 
 ## Safe to Continue
 
-Yes. Working tree changes are scoped, suite is green, no destructive actions
-taken, nothing committed or pushed.
+Yes. Working tree is clean after release; suite is green.

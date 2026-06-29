@@ -27,6 +27,13 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | Every shipped example parses, type-checks, and runs clean | Real | `tests/test_examples.py` |
 | `let` (immutable binding), `for … in` keyword loop, `:=` (define mutable) | Real | `tests/test_language_features.py` |
 | `strict` (requires initialization) / `pure` (no I/O) module modes | Real | `tests/test_language_features.py` |
+| Self- and mutual recursion (correct arity, no false E030) | Real | `tests/test_language_fixes.py` |
+| `this` keyword, member assignment, fountain field default initializers | Real | `tests/test_language_fixes.py` |
+| Closures capture their lexical (defining) scope | Real | `tests/test_language_fixes.py` |
+| `\|>` pipe operator (and bare `\|`); `error (name)` binds the thrown value | Real | `tests/test_language_fixes.py` |
+| `times N { … }` repeat loop | Real | `tests/test_new_language_features.py` |
+| C-style `refill(init; cond; step)` loop (counter implicitly mutable) | Real | `tests/test_new_language_features.py` |
+| Anonymous functions / lambdas `glass(params) { … }` as values | Real | `tests/test_new_language_features.py` |
 
 ## Governance (maximal)
 
