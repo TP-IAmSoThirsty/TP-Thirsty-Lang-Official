@@ -33,6 +33,7 @@ from utf.thirsty_lang.ast import (
     ImportStmt,
     InterfaceDecl,
     IntLiteral,
+    LambdaExpr,
     MemberAccess,
     ModuleHeader,
     MorphDef,
@@ -54,6 +55,7 @@ from utf.thirsty_lang.ast import (
     StructDecl,
     SymbolExpr,
     ThrowStmt,
+    TimesStmt,
     UnaryOp,
     VariableDecl,
     WhileStmt,
@@ -134,6 +136,11 @@ def format_stmt(node: Stmt, indent: int = 0) -> str:
         iterable = format_expr(node.iterable, 0)
         body = format_block(node.body, indent + 1) if isinstance(node.body, BlockStmt) else format_stmt(node.body, indent + 1)
         return f"{prefix}refill {var} in {iterable} {{\n{body}\n{prefix}}}"
+
+    elif isinstance(node, TimesStmt):
+        count = format_expr(node.count, 0)
+        body = format_block(node.body, indent + 1) if isinstance(node.body, BlockStmt) else format_stmt(node.body, indent + 1)
+        return f"{prefix}times {count} {{\n{body}\n{prefix}}}"
 
     elif isinstance(node, ReturnStmt):
         val = format_expr(node.value, 0) if node.value else ""
@@ -260,6 +267,11 @@ def format_else_if(node: IfStmt, indent: int = 0) -> str:
 
 def format_expr(node: Expr, precedence: int = 0) -> str:
     """Format an expression node with optional parenthesization."""
+    if isinstance(node, LambdaExpr):
+        params = ", ".join(f"{n}: {t}" if t else n for n, t in node.params)
+        ret = f" -> {node.return_type}" if node.return_type else ""
+        body = format_block(node.body, 1) if isinstance(node.body, BlockStmt) else format_stmt(node.body, 1)
+        return f"glass({params}){ret} {{\n{body}\n}}"
     if isinstance(node, IntLiteral):
         return str(node.value)
 

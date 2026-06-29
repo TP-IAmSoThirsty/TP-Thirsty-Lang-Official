@@ -35,6 +35,7 @@ from utf.thirsty_lang.ast import (
     ImportStmt,
     InterfaceDecl,
     IntLiteral,
+    LambdaExpr,
     MemberAccess,
     MorphDef,
     NewExpr,
@@ -56,6 +57,7 @@ from utf.thirsty_lang.ast import (
     SymbolExpr,
     SymbolStmt,
     ThrowStmt,
+    TimesStmt,
     TokenType,
     UnaryOp,
     VariableDecl,
@@ -223,6 +225,8 @@ class Checker:
             self._check_while_stmt(stmt)
         elif isinstance(stmt, ForStmt):
             self._check_for_stmt(stmt)
+        elif isinstance(stmt, TimesStmt):
+            self._check_times_stmt(stmt)
         elif isinstance(stmt, BlockStmt):
             self._check_block(stmt)
         elif isinstance(stmt, ReturnStmt):
@@ -367,6 +371,12 @@ class Checker:
         self._check_expr(stmt.iterable)
         self._check_block(stmt.body)
         self.exit_scope()
+
+    def _check_times_stmt(self, stmt: TimesStmt):
+        # The count is evaluated to an int at runtime; just resolve the
+        # expression (catches unknown identifiers) and check the body.
+        self._check_expr(stmt.count)
+        self._check_block(stmt.body)
 
     def _check_block(self, stmt: Stmt):
         if isinstance(stmt, BlockStmt):
@@ -521,6 +531,15 @@ class Checker:
             if isinstance(left_type, FloatType) or isinstance(right_type, FloatType):
                 return FloatType()
             return left_type
+        elif isinstance(expr, LambdaExpr):
+            self.enter_scope()
+            for pname, ptype in expr.params:
+                t = type_from_name(ptype) if ptype else AnyType()
+                self.scope.declare(
+                    pname, {"type": t, "is_mut": False, "kind": "param"})
+            self._check_block(expr.body)
+            self.exit_scope()
+            return AnyType()
         elif isinstance(expr, UnaryOp):
             operand_type = self._check_expr(expr.operand)
             if expr.op == TokenType.NOT:
