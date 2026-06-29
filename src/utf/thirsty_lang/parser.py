@@ -53,6 +53,7 @@ from utf.thirsty_lang.ast import (
     Stmt,
     StringLiteral,
     StructDecl,
+    Subscript,
     SymbolStmt,
     ThrowStmt,
     TimesStmt,
@@ -812,6 +813,16 @@ class Parser:
                           right.span[2], right.span[3]))
             elif op == TokenType.LPAREN:
                 prefix = self._parse_call_suffix(prefix)
+            elif op == TokenType.LBRACKET:
+                self._advance()  # consume [
+                index = self._parse_expr()
+                close = self._expect(
+                    TokenType.RBRACKET, "E901",
+                    detail="Expected ']' after subscript index")
+                prefix = Subscript(
+                    obj=prefix, index=index,
+                    span=(prefix.span[0], prefix.span[1],
+                          close.line, close.col + 1))
             elif op == TokenType.PIPE:
                 self._advance()
                 right = self._parse_expr(op_prec)
@@ -1077,6 +1088,7 @@ class Parser:
             TokenType.HATHAT: 8,
             TokenType.DOT: 9,
             TokenType.LPAREN: 9,
+            TokenType.LBRACKET: 9,
         }
 
     def _peek_next(self, n: int = 1) -> Token:

@@ -54,6 +54,7 @@ from utf.thirsty_lang.ast import (
     Stmt,
     StringLiteral,
     StructDecl,
+    Subscript,
     SymbolExpr,
     SymbolStmt,
     ThrowStmt,
@@ -185,8 +186,11 @@ class Checker:
                 # see the correct arity while bodies are being checked.
                 param_types = [type_from_name(ptype) if ptype else AnyType()
                                for _pname, ptype in stmt.params]
+                # No explicit return type → gradual default of Any (not Void),
+                # so a value-returning un-annotated function flows into typed
+                # operators and self-recursion type-checks. (review F2)
                 ret_type = (type_from_name(stmt.return_type)
-                            if stmt.return_type else VoidType())
+                            if stmt.return_type else AnyType())
                 self.scope.declare(stmt.name, {
                     "type": FunctionType(param_types, ret_type),
                     "is_mut": False, "kind": "function"})
@@ -313,15 +317,16 @@ class Checker:
             t = type_from_name(ptype) if ptype else AnyType()
             param_types.append(t)
             self.scope.declare(pname, {"type": t, "is_mut": False, "kind": "param"})
-        # Set return type context
+        # Set return type context. No annotation → Any (gradual default), so
+        # returns are unconstrained rather than forced to Void. (review F2)
         old_return_type = self.current_function_return_type
-        self.current_function_return_type = type_from_name(stmt.return_type) if stmt.return_type else VoidType()
+        self.current_function_return_type = type_from_name(stmt.return_type) if stmt.return_type else AnyType()
         # Check body
         self._check_block(stmt.body)
         self.current_function_return_type = old_return_type
         self.exit_scope()
         # Update binding with proper function type
-        ret_type = type_from_name(stmt.return_type) if stmt.return_type else VoidType()
+        ret_type = type_from_name(stmt.return_type) if stmt.return_type else AnyType()
         self.scope.bindings[stmt.name] = {
             "type": FunctionType(param_types, ret_type),
             "is_mut": False,
@@ -597,6 +602,10 @@ class Checker:
         elif isinstance(expr, MemberAccess):
             self._check_expr(expr.obj)
             return AnyType()
+        elif isinstance(expr, Subscript):
+            self._check_expr(expr.obj)
+            self._check_expr(expr.index)
+            return AnyType()
         elif isinstance(expr, SanitizeExpr):
             return self._check_expr(expr.expr)
         elif isinstance(expr, ArmorExpr):
@@ -613,9 +622,22 @@ class Checker:
             right_type = self._check_expr(expr.right)
             return right_type
         elif isinstance(expr, CombineExpr):
-            self._check_expr(expr.left)
-            self._check_expr(expr.right)
-            return StringType()
+            lt = self._check_expr(expr.left)
+            rt = self._check_expr(expr.right)
+            l_bool, r_bool = isinstance(lt, BoolType), isinstance(rt, BoolType)
+            l_any, r_any = isinstance(lt, AnyType), isinstance(rt, AnyType)
+            # A bool combined with a known non-bool is a malformed predicate:
+            # reject it statically so it fails closed rather than coercing at
+            # runtime. (review F3)
+            if (l_bool and not r_bool and not r_any) or \
+               (r_bool and not l_bool and not l_any):
+                self.errors.append(make_error(
+                    "E022", span=expr.span, op=expr.op, expected="Bool",
+                    found=type_to_string(rt if l_bool else lt)))
+                return BoolType()
+            if l_bool and r_bool:
+                return BoolType()
+            return AnyType()
         return AnyType()
 
 

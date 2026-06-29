@@ -53,6 +53,7 @@ from utf.thirsty_lang.ast import (
     Stmt,
     StringLiteral,
     StructDecl,
+    Subscript,
     SymbolExpr,
     ThrowStmt,
     TimesStmt,
@@ -272,6 +273,8 @@ def format_expr(node: Expr, precedence: int = 0) -> str:
         ret = f" -> {node.return_type}" if node.return_type else ""
         body = format_block(node.body, 1) if isinstance(node.body, BlockStmt) else format_stmt(node.body, 1)
         return f"glass({params}){ret} {{\n{body}\n}}"
+    if isinstance(node, Subscript):
+        return f"{format_expr(node.obj, 9)}[{format_expr(node.index, 0)}]"
     if isinstance(node, IntLiteral):
         return str(node.value)
 

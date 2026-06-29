@@ -34,6 +34,9 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | `times N { … }` repeat loop | Real | `tests/test_new_language_features.py` |
 | C-style `refill(init; cond; step)` loop (counter implicitly mutable) | Real | `tests/test_new_language_features.py` |
 | Anonymous functions / lambdas `glass(params) { … }` as values | Real | `tests/test_new_language_features.py` |
+| Subscript indexing `xs[i]` (reservoir/dict/string), read + assign, bounds-checked | Real | `tests/test_review_0_8_1.py` |
+| Un-annotated functions return `Any` (value-use + recursion type-check) | Real | `tests/test_review_0_8_1.py` |
+| Combine `^`/`\|\|` require both operands bool; mixed bool/non-bool rejected (no fail-open) | Real | `tests/test_review_0_8_1.py` |
 
 ## Governance (maximal)
 

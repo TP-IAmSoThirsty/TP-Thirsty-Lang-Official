@@ -56,6 +56,7 @@ from utf.thirsty_lang.ast import (
     Stmt,
     StringLiteral,
     StructDecl,
+    Subscript,
     SymbolExpr,
     SymbolStmt,
     ThrowStmt,
@@ -411,6 +412,24 @@ class Interpreter:
                 raise TypeError(
                     f"Cannot assign member '{stmt.target.member}' on "
                     f"{type(obj).__name__}")
+        elif isinstance(stmt.target, Subscript):
+            obj = self._evaluate(stmt.target.obj)
+            index = self._evaluate(stmt.target.index)
+            if isinstance(obj, list):
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise TypeError(
+                        f"reservoir index must be an Int, got "
+                        f"{type(index).__name__}")
+                if index < -len(obj) or index >= len(obj):
+                    raise IndexError(
+                        f"index out of bounds: size is {len(obj)}, "
+                        f"got {index}")
+                obj[index] = value
+            elif isinstance(obj, dict):
+                obj[index] = value
+            else:
+                raise TypeError(
+                    f"Cannot index-assign on {type(obj).__name__}")
         return value
 
     def _execute_symbol_stmt(self, stmt: SymbolStmt) -> object:
@@ -1194,7 +1213,27 @@ class Interpreter:
             return self._evaluate_pipeline(expr)
         elif isinstance(expr, CombineExpr):
             return self._evaluate_combine(expr)
+        elif isinstance(expr, Subscript):
+            return self._evaluate_subscript(expr)
         return None
+
+    def _evaluate_subscript(self, expr: Subscript) -> object:
+        """obj[index] — index a reservoir (list), dict, or string."""
+        obj = self._evaluate_impl(expr.obj)
+        index = self._evaluate_impl(expr.index)
+        if isinstance(obj, (list, str)):
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise TypeError(
+                    f"reservoir/string index must be an Int, got "
+                    f"{type(index).__name__}")
+            if index < -len(obj) or index >= len(obj):
+                raise IndexError(
+                    f"index out of bounds: size is {len(obj)}, got {index}")
+            return obj[index]
+        if isinstance(obj, dict):
+            return obj.get(index)
+        raise TypeError(
+            f"cannot index {type(obj).__name__} with '[]'")
 
     def _evaluate_binary(self, expr: BinaryOp) -> object:
         left = self._evaluate_impl(expr.left)
@@ -1330,15 +1369,23 @@ class Interpreter:
     def _evaluate_combine(self, expr: CombineExpr) -> object:
         left = self._evaluate_impl(expr.left)
         right = self._evaluate_impl(expr.right)
-        if isinstance(left, bool) or isinstance(right, bool):
+        # Logical combine requires BOTH operands to be bool. A mixed
+        # bool/non-bool must NOT coerce — silently doing so let a malformed
+        # governance predicate authorize execution (fail-open). (review F3)
+        if isinstance(left, bool) and isinstance(right, bool):
             if expr.op == "^":
-                return bool(left) and bool(right)
+                return left and right
             if expr.op == "||":
-                return bool(left) or bool(right)
+                return left or right
+        # Structured composition: dicts merge, reservoirs concatenate.
         if isinstance(left, dict) and isinstance(right, dict):
             merged = dict(left)
             merged.update(right)
             return merged
         if isinstance(left, list) and isinstance(right, list):
             return left + right
-        return right
+        # No silent drop of the left operand: an unsupported combination is a
+        # hard error (governed evaluation treats it as fail-closed). (review F3)
+        raise TypeError(
+            f"operator '{expr.op}' cannot combine "
+            f"{type(left).__name__} and {type(right).__name__}")
