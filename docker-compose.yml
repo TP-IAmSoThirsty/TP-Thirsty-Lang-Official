@@ -1,0 +1,124 @@
+version: '3.9'
+
+services:
+  # Runtime: Execute thirsty programs
+  thirsty:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-runtime
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./src:/app/src:ro
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    entrypoint: ["thirsty"]
+    command: ["--help"]
+
+  # Development: Hot-reload with mounted source
+  dev:
+    build:
+      context: .
+      target: builder
+    container_name: thirsty-dev
+    volumes:
+      - ./src:/build/src
+      - ./tests:/build/tests
+      - ./docs:/build/docs
+      - ./.github:/build/.github
+      - ./pyproject.toml:/build/pyproject.toml
+      - ./README.md:/build/README.md
+    working_dir: /build
+    stdin_open: true
+    tty: true
+    environment:
+      PYTHONUNBUFFERED: "1"
+      THIRSTY_DEBUG: "1"
+    entrypoint: /bin/bash
+    command: ["-c", "pip install -e . && bash"]
+
+  # Test Runner: Run full test suite
+  test:
+    build:
+      context: .
+      target: builder
+    container_name: thirsty-test
+    volumes:
+      - ./src:/build/src
+      - ./tests:/build/tests
+      - ./pyproject.toml:/build/pyproject.toml
+    working_dir: /build
+    environment:
+      PYTHONUNBUFFERED: "1"
+    entrypoint: ["pytest"]
+    command: ["tests/", "-v", "--tb=short"]
+
+  # REPL: Interactive shell
+  repl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-repl
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./src:/app/src:ro
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    entrypoint: ["thirsty"]
+    command: ["repl"]
+
+  # LSP Server: Language Server Protocol
+  lsp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-lsp
+    volumes:
+      - ./src:/app/src:ro
+    working_dir: /app
+    ports:
+      - "9898:9898"
+    environment:
+      PYTHONUNBUFFERED: "1"
+    entrypoint: ["thirsty"]
+    command: ["lsp", "--port", "9898"]
+
+  # Build: Compile to JavaScript
+  build-js:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-build-js
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./src:/app/src:ro
+      - ./dist:/app/dist
+    working_dir: /app
+    entrypoint: ["thirsty"]
+    command: ["build", "--target", "js", "src/main.thirsty"]
+
+  # Formatter: Code formatting
+  fmt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-fmt
+    volumes:
+      - ./src:/app/src
+    working_dir: /app
+    entrypoint: ["thirsty"]
+    command: ["fmt", "src/"]
+
+  # Doctor: Project health check
+  doctor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thirsty-doctor
+    volumes:
+      - ./:/app
+    working_dir: /app
+    entrypoint: ["thirsty"]
+    command: ["doctor"]

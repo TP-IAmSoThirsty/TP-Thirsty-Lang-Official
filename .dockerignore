@@ -1,0 +1,46 @@
+# Patterns and files to exclude from Docker build context
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.mypy_cache/
+.ruff_cache/
+.tmp/
+.git/
+.gitignore
+.github/
+.gitlab-ci.yml
+.pre-commit-config.yaml
+.venv/
+venv/
+ENV/
+env/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+# Allow docs and README for the image
+# docs/ included
+# README.md included
