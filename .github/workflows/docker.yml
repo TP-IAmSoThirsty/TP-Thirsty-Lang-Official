@@ -3,7 +3,8 @@ name: Build and Push Docker Image
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'         # release tags (also publishes to PyPI via release.yml)
+      - 'docker-v*'  # docker-only publish, no PyPI re-release
   workflow_dispatch:
     inputs:
       version:
@@ -62,7 +63,9 @@ jobs:
           GHCR="ghcr.io/${OWNER}/thirsty-lang"
           HUB="docker.io/${DOCKERHUB_NAMESPACE}/thirsty-lang"
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
+            REF="${GITHUB_REF#refs/tags/}"   # v0.8.1 | docker-v0.8.1
+            REF="${REF#docker-}"             # v0.8.1
+            VERSION="${REF#v}"               # 0.8.1
           else
             VERSION="${{ github.event.inputs.version }}"
           fi
