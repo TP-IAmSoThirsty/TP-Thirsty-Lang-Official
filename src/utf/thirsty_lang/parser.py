@@ -477,19 +477,25 @@ class Parser:
         while not self._check(TokenType.RBRACE) and not self._is_at_end():
             if self._check(TokenType.GLASS):
                 methods.append(self._parse_function_decl())
+            elif (self._check(TokenType.DRINK)
+                  or self._check(TokenType.IDENTIFIER)):
+                # field: [drink [mut]] name [: type] [= default]
+                self._match(TokenType.DRINK)
+                self._match(TokenType.MUT)
+                name_t = self._expect(TokenType.IDENTIFIER, "E901",
+                                      detail="Expected field name")
+                var_type = None
+                if self._match(TokenType.COLON):
+                    type_t = self._expect(TokenType.IDENTIFIER, "E901",
+                                          detail="Expected field type")
+                    var_type = type_t.lexeme
+                default_expr = None
+                if self._match(TokenType.ASSIGN):
+                    default_expr = self._parse_expr()
+                fields.append((name_t.lexeme, var_type, default_expr))
+                self._match(TokenType.SEMICOLON)
             else:
-                tok = self._peek()
-                if tok.type == TokenType.IDENTIFIER:
-                    name_t = self._advance()
-                    var_type = None
-                    if self._match(TokenType.COLON):
-                        type_t = self._expect(TokenType.IDENTIFIER, "E901",
-                                              detail="Expected field type")
-                        var_type = type_t.lexeme
-                    fields.append((name_t.lexeme, var_type))
-                    self._match(TokenType.SEMICOLON)
-                else:
-                    self._advance()
+                self._advance()
         self._expect(TokenType.RBRACE, "E901", detail="Expected '}' to close class")
         return ClassDecl(name=name_token.lexeme, methods=methods,
                          fields=fields, span=self._span(start))
@@ -523,10 +529,18 @@ class Parser:
         body = self._parse_block()
         handlers = []
         while self._match(TokenType.ERROR):
-            # error (type) { handler_block }
-            error_expr = Identifier(name="error", span=self._current_span())
+            # error [(name)] { handler_block } — the optional binding name
+            # receives the thrown value inside the handler block.
+            error_var = None
+            if self._match(TokenType.LPAREN):
+                name_token = self._expect(
+                    TokenType.IDENTIFIER, "E901",
+                    detail="Expected error binding name after '('")
+                error_var = name_token.lexeme
+                self._expect(TokenType.RPAREN, "E901",
+                             detail="Expected ')' after error binding")
             handler_block = self._parse_block()
-            handlers.append((error_expr, handler_block))
+            handlers.append((error_var, handler_block))
         return SpillageStmt(body=body, handlers=handlers, span=self._span(start))
 
     def _parse_cleanup_stmt(self) -> CleanupStmt:
@@ -881,6 +895,13 @@ class Parser:
             self._advance()
             target = self._parse_expr()
             return EvaporateExpr(target=target, span=self._span())
+        elif t == TokenType.THIS:
+            # `this` is the current fountain instance. Model it as an identifier
+            # named "this"; member access/assignment and method calls are then
+            # handled by the existing DOT/ASSIGN infix machinery, and the
+            # interpreter binds "this" in each method's call scope.
+            this_token = self._advance()
+            return Identifier(name="this", span=self._span(this_token))
         elif t == TokenType.THIRST:
             return self._parse_guard_expr()
         elif t == TokenType.QUENCHED:

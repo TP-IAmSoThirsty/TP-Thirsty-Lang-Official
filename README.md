@@ -77,9 +77,12 @@ A syntax that reads like a hydration app had a baby with a type checker.
 module factorial: core
 
 glass fact(n: Int) -> Int {
-    thirst (n <= 1) { quench 1 }
-    quench n * fact(n - 1)
+    thirsty (n <= 1) { return 1 }
+    return n * fact(n - 1)
 }
+
+drink answer = fact(5)
+pour answer
 ```
 
 **What actually exists (not aspirational, not vapor):**
@@ -100,7 +103,7 @@ Object-oriented programming, async (`cascade`/`await`), and structured error han
 fountain Counter {
     drink count: Int = 0
     glass increment() {
-        mut this.count = this.count + 1
+        this.count = this.count + 1
     }
 }
 ```
@@ -238,7 +241,7 @@ lsp      → Start Language Server Protocol endpoint
 docs     → Generate API documentation
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.1.4`.
+Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.7.1`.
 
 ---
 
@@ -279,13 +282,13 @@ Default-DENY at every boundary. Data cannot flow upward without clearing the tie
 
 ## Verification
 
-**121 tests pass.** Every time. Before every commit. No regressions.
+**1187 tests pass.** Every time. Before every commit. No regressions.
 
 ```
 $ python -m pytest tests/ -q
-........................................................................ [ 59%]
-.................................................                        [100%]
-121 passed in 0.13s
+........................................................................ [ 96%]
+.........................................                                [100%]
+1187 passed, 1 skipped in 4.5s
 ```
 
 The test suite covers: lexer, parser, checker, interpreter, formatter, module system, REPL, JS transpilation, T.A.R.L. policies, Shadow Thirst analyzers, TSCG parsing/canonicalization, TSCG-B frame encoding/decoding, Thirst of Gods divine contract validation, CLI commands, and end-to-end program execution.
@@ -298,7 +301,7 @@ Thirsty-Lang is now available on PyPI.
 
 **For pinned installs:**
 ```bash
-pip install thirsty-lang==0.1.4
+pip install thirsty-lang==0.7.1
 ```
 
 **For upgrade installs:**

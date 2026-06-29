@@ -126,6 +126,10 @@ class Lexer:
     def _handle_pipe(self):
         if self._match("|"):
             self._add_token(TokenType.PIPEPIPE, "||")
+        elif self._match(">"):
+            # The pipe operator is documented as `|>`; accept it as a single
+            # token (bare `|` is also accepted as the same operator).
+            self._add_token(TokenType.PIPE, "|>")
         else:
             self._add_token(TokenType.PIPE)
 

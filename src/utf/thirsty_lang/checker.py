@@ -178,8 +178,15 @@ class Checker:
                     self.errors.append(
                         make_error("E010", span=stmt.span, name=name))
                     continue
+                # Register the real signature (param + return types) so that
+                # forward references, self-recursion, and mutual recursion all
+                # see the correct arity while bodies are being checked.
+                param_types = [type_from_name(ptype) if ptype else AnyType()
+                               for _pname, ptype in stmt.params]
+                ret_type = (type_from_name(stmt.return_type)
+                            if stmt.return_type else VoidType())
                 self.scope.declare(stmt.name, {
-                    "type": FunctionType([], AnyType()),
+                    "type": FunctionType(param_types, ret_type),
                     "is_mut": False, "kind": "function"})
                 self._hoisted.add(name)
                 if isinstance(stmt, GovernedFunctionDecl):
@@ -236,8 +243,14 @@ class Checker:
             self._check_block(stmt.body)
         elif isinstance(stmt, SpillageStmt):
             self._check_block(stmt.body)
-            for _, handler in stmt.handlers:
+            for error_var, handler in stmt.handlers:
+                self.enter_scope()
+                if error_var:
+                    self.scope.declare(
+                        error_var,
+                        {"type": AnyType(), "is_mut": False, "kind": "error"})
                 self._check_block(handler)
+                self.exit_scope()
         elif isinstance(stmt, CleanupStmt):
             self._check_block(stmt.body)
             self._check_block(stmt.finalizer)
@@ -318,9 +331,13 @@ class Checker:
             if not self.scope.declare(stmt.name, {"type": AnyType(), "is_mut": False, "kind": "class"}):
                 self.errors.append(make_error("E010", span=stmt.span, name=stmt.name))
         self.enter_scope()
-        for fname, ftype in stmt.fields:
+        for field_spec in stmt.fields:
+            fname, ftype = field_spec[0], field_spec[1]
             t = type_from_name(ftype) if ftype else AnyType()
             self.scope.declare(fname, {"type": t, "is_mut": True, "kind": "field"})
+            default_expr = field_spec[2] if len(field_spec) > 2 else None
+            if default_expr is not None:
+                self._check_expr(default_expr)
         for method in stmt.methods:
             self._check_function_decl(method)
         self.exit_scope()
@@ -459,6 +476,11 @@ class Checker:
         elif isinstance(expr, Identifier):
             if expr.name == "__error__":
                 return ErrorType()
+            # `this` is bound at runtime inside fountain methods; its members are
+            # resolved dynamically, so treat the receiver as Any rather than
+            # flagging it as an unknown identifier.
+            if expr.name == "this":
+                return AnyType()
             info = self.scope.lookup(expr.name)
             if info is None:
                 suggestions: list[str] = []
