@@ -1,49 +1,77 @@
-# THIRSTY-LANG
+# Thirsty-Lang
 
-```
-„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
- „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-  „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-   „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-    „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-     „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-      „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-       „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-        „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-         „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-          „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-           „„„„„„„„„„„„„„„„„„„„„„„„„„„„
-            „„„„„„„„„„„„„„„„„„„„„„„„„„
-             „„„„„„„„„„„„„„„„„„„„„„„„
-              „„„„„„„„„„„„„„„„„„„„„„
-               „„„„„„„„„„„„„„„„„„„„
-                „„„„„„„„„„„„„„„„„„
-                 „„„„„„„„„„„„„„„„
-                  „„„„„„„„„„„„„„
-                   „„„„„„„„„„„„
-                    „„„„„„„„„„
-                     „„„„„„„„
-                      „„„„„„
-                       „„„„
-                        „„
-                         „
+[![PyPI](https://img.shields.io/pypi/v/thirsty-lang?style=for-the-badge&label=PyPI&color=0ea5e9)](https://pypi.org/project/thirsty-lang/)
+[![Python](https://img.shields.io/pypi/pyversions/thirsty-lang?style=for-the-badge&label=Python&color=2563eb)](https://pypi.org/project/thirsty-lang/)
+[![License](https://img.shields.io/pypi/l/thirsty-lang?style=for-the-badge&label=License&color=16a34a)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/smoke.yml?branch=master&style=for-the-badge&label=CI&color=0891b2)](https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/actions/workflows/smoke.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/release.yml?style=for-the-badge&label=Release&color=7c3aed)](https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/actions/workflows/release.yml)
+[![Docker](https://img.shields.io/github/actions/workflow/status/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/docker.yml?style=for-the-badge&label=Docker&color=0284c7)](https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official/actions/workflows/docker.yml)
+
+```text
+       ~ ~ ~        THIRSTY-LANG        ~ ~ ~
+   source -> verdict -> proof -> audit -> governed effect
+       no policy        no authority        no silent downgrade
+                 DENY is the default current
 ```
 
-**A 6-tier governance-first programming language family.**  
-The water metaphor is not a gimmick. Every keyword maps to a structural security effect. Default-DENY at every gate. 14 built-in module namespaces. A symbolic constraint grammar that compiles to binary frames with CRC32 + SHA-256 integrity. A mutation analyzer that can block your code from promoting if it detects cross-plane data leakage.
+**A governance-first programming language family for code that has to justify
+itself before it acts.**
 
-This is not a joke. This is **Thirsty-Lang**.
+The programming language wars are not over. Governance is just getting started.
 
----
+Thirsty-Lang is not trying to be a prettier Python syntax. It is a defensive
+runtime and language stack where execution, side effects, policy, proof,
+authority, audit, mutation, symbolic constraints, and build outputs are treated
+as governable surfaces.
 
-## Quick Start — You Have 30 Seconds
+The core posture is simple:
+
+- 🌊 no policy means deny
+- 🔐 no authority means deny
+- 🧾 no proof means no governed-execution claim
+- ⚡ no side effect before a verdict
+- 🧱 no silent downgrade when a governed path cannot be preserved
+
+## Current Map
+
+```mermaid
+flowchart LR
+    Source[".thirsty source"] --> Parse["Parse + check"]
+    Parse --> Mode{"core or governed?"}
+    Mode -->|core| Run["ordinary runtime"]
+    Mode -->|governed| Contracts["requires / ensures / invariant"]
+    Contracts --> Policy["T.A.R.L. policy"]
+    Policy --> Verdict{"ALLOW / DENY / ESCALATE"}
+    Verdict -->|ALLOW| Effect["brokered effect"]
+    Verdict -->|DENY| Refuse["fail closed"]
+    Verdict -->|ESCALATE| Quorum["signed quorum path"]
+    Effect --> Proof["proof record"]
+    Refuse --> Proof
+    Quorum --> Proof
+    Proof --> Audit["hash-linked audit"]
+```
+
+## Install
 
 ```bash
 pip install thirsty-lang
 ```
 
-Write a file called `hello.thirsty`:
+Pinned release:
+
+```bash
+pip install thirsty-lang==0.8.1
+```
+
+From source:
+
+```bash
+git clone https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official.git
+cd TP-Thirsty-Lang-Official
+pip install -e .
+```
+
+## A First Thirsty Program
 
 ```thirsty
 module hello: core
@@ -52,339 +80,269 @@ glass greet(name) {
     return "hello, " + name + "!"
 }
 
-drink main = greet("thirsty world")
-pour main
+drink message = greet("governed world")
+pour message
 ```
 
 Run it:
 
 ```bash
 thirsty run hello.thirsty
-# hello, thirsty world!
 ```
 
-That's the welcoming committee. Now read the rest. It gets significantly weirder.
+The welcoming syntax is only the surface. The language becomes more interesting
+when the program asks to touch something real.
 
----
+## Governed Execution
 
-## The 6-Tier Stack — What the Hell Did You Just Install?
-
-### 🔵 Tier 1: Thirsty-Lang (Core)
-
-A syntax that reads like a hydration app had a baby with a type checker.
-
-```thirsty
-module factorial: core
-
-glass fact(n: Int) -> Int {
-    thirsty (n <= 1) { return 1 }
-    return n * fact(n - 1)
-}
-
-drink answer = fact(5)
-pour answer
-```
-
-**What actually exists (not aspirational, not vapor):**
-- **35+ token types** — `DRINK`, `POUR`, `SIP`, `THIRST`, `QUENCH`, `REFILL`, `TIMES`, `GLASS`, `RESERVOIR`, `WELL`, `FLOOD`, `DRIP`, `EVAPORATE`, `CONDENSE`, `FOUNTAIN`, `RETURN`, `PARCHED`, `QUENCHED`, `EMPTY`, `MUT`, `IN`, `CASCADE`, `THIS`, `NEW`, `PUBLIC`, `PRIVATE`, `SPILLAGE`, `CLEANUP`, `ERROR`, `THROW`, `FINALLY`... the lexer tokenizes all of them.
-- **Full lexer** — 25 methods, handles strings, numbers, identifiers, operators, multi-character tokens, comments, newlines
-- **Full parser** — 59 methods, recursive descent with error recovery and fuzzy match suggestions
-- **Full interpreter** — 58 methods, supports functions, variables, if/else guards, while/for loops, pipe operator (`|>`), imports, classes, spillage/cascade, tail call optimization, optimization levels 0-3, debug mode
-- **Full type checker** — scope resolution, type inference, builtin registration, edit-distance error suggestions (you type `poour` and it says "did you mean `pour`?")
-- **Formatter** — `thirsty fmt` reformats your code with consistent rules
-- **JS transpilation** — `thirsty build hello.thirsty --target js` produces valid JavaScript
-- **11 CLI subcommands** — run, repl, fmt, new, build, govern, add, audit, lock, doctor, lsp, docs. All of them work.
-
-**Control flow, loops, and functions:**
-
-```thirsty
-module loops: core
-
-// while loop
-drink mut i = 0
-refill (i < 3) { i = i + 1 }
-
-// for-each loop
-refill (x in [10, 20, 30]) { pour x }
-
-// C-style loop — the counter is implicitly mutable
-refill (drink j = 0; j < 5; j = j + 1) { pour j }
-
-// repeat N times
-times 3 { pour "drink water" }
-
-// recursion, closures, and anonymous functions (lambdas)
-glass make_adder(n) { return glass(x) { return x + n } }
-drink add10 = make_adder(10)
-pour add10(5)             // 15
-```
-
-Fountains (classes) support the `this` keyword, field default initializers, and
-member assignment:
-
-```thirsty
-fountain Counter {
-    drink count: Int = 0
-    glass increment() { this.count = this.count + 1 }
-    glass get() { return this.count }
-}
-```
-
-### 🟣 Tier 2: Thirst of Gods
-
-Object-oriented programming, async (`cascade`/`await`), and structured error handling (`spillage`/`cleanup`/`throw`) — all validated by a **divine contract validator**.
-
-```thirsty
-fountain Counter {
-    drink count: Int = 0
-    glass increment() {
-        this.count = this.count + 1
-    }
-}
-```
-
-**What exists:** The validator (`to_gods()`) walks the **real AST** and checks your code for:
-
-- A fountain (class) with an `init` method? ✓
-- A real `cascade` call (`CascadeCall` node), anywhere in the tree? ✓
-- A `spillage` block with at least one handler? ✓
-- A real `cleanup` block? ✓
-
-Detection is **structural, not name-based**: a `CascadeCall`/`SpillageStmt`/`CleanupStmt` is found wherever it lives — inside a method body or a nested block — and a function merely *named* something suggestive doesn't satisfy the contract. If your code doesn't satisfy the divine contract, it tells you. This is not decorative.
-
-### 🟢 Tier 3: T.A.R.L. — Thirsty's Active Resistance Language
-
-A policy-as-code engine. Default-DENY. Always.
-
-```tarl
-policy access_control:
-    when user.role == "admin"    -> ALLOW
-    when user.ip in blacklist    -> DENY
-    when hour < 6 or hour > 22   -> ESCALATE
-    default                       -> DENY
-```
-
-**What exists:** `TarlEngine`, `TarlPolicy`, `TarlRule`, `TarlVerdict` (ALLOW/DENY/ESCALATE), `PolicyParser`, `SafeExpr`, LRU-cached evaluation, adaptive policy ordering. Import it from Python and evaluate policies programmatically. First-match-wins semantics. Default-DENY when no rule matches.
-
-**Runtime enforcement in the language:** a governed function declares a precondition with `requires`, and the interpreter enforces it on every call — layered and default-deny:
+Governed code declares contracts and then passes through policy before sensitive
+effects happen.
 
 ```thirsty
 module bank: governed
-glass withdraw(amt) requires amt > 0 {
+
+glass withdraw(amt) requires amt > 0 ensures result >= 0 {
     return amt * 2
 }
 ```
 
-1. **In-language precondition** — the `requires` expression is evaluated at call time; a falsy result raises `GovernanceViolation`.
-2. **Cross-mode guard** — a governed function invoked outside `governed` mode is denied (the runtime counterpart of checker error `E053`).
-3. **T.A.R.L. routing** — attach a policy engine (`Interpreter.attach_tarl(...)`, or `thirsty run … --authority <tag> --policy <file.tarl>`); a non-ALLOW verdict denies and a `TarlProof` certificate is recorded (unsigned by default; HMAC-SHA256 signing is opt-in and is a *symmetric* MAC, not a non-repudiable signature — see [docs/governance_model.md](docs/governance_model.md)). Governance denials are a hard floor — `spillage` handlers cannot swallow them.
+Runtime enforcement includes:
 
-### 🟡 Tier 4: Shadow Thirst
+- 🧪 `requires`, `ensures`, and `invariant` checks
+- 🚧 static and runtime blocking of governed calls from ordinary `core` mode
+- 🧭 T.A.R.L. policy routing for governed calls and capability gates
+- 🧾 proof-bearing `ALLOW`, `DENY`, and `ESCALATE` decisions
+- 🛑 non-swallowable `GovernanceViolation` denials
+- 🧯 fail-closed parsing for governed modules
+- 📦 build refusal when a target would drop governance unless the loss is explicitly disclosed
 
-Mutation analysis and invariant verification. **Code cannot promote unless it passes.**
+## T.A.R.L.: Policy As Resistance
 
-```shadow
-shadow analyze_memory:
-    invariant: deterministic
-    canonical: converge
-promote
+T.A.R.L. is Thirsty's Active Resistance Language. It is a policy engine built
+around explicit verdicts, not optimistic defaults.
+
+```tarl
+policy access_control
+
+when user.role == "admin" => ALLOW
+when action == "delete" and resource == "critical" => ESCALATE
+when user.ip in blacklist => DENY
+when true => DENY
 ```
 
-**What exists: 6 analyzers that run over the real parsed AST** (Thirsty-Lang's own lexer + parser), not over substrings of the source — so a variable merely *named* `nowhere` no longer trips the determinism check, and the word "canonical" in a comment no longer trips plane isolation:
+Implemented policy surfaces include:
 
-1. **Plane Isolation** — walks the shadow block for writes into `canonical_*` bindings or calls into the canonical plane
-2. **Determinism** — flags *calls* to non-deterministic functions (`now()`, `rand()`, `uuid()`, …), distinguishing a call from a like-named variable
-3. **Resource Estimation** — estimates CPU/memory from loop, call, and allocation **nodes**
-4. **Purity Spring** — checks the invariant block for impure calls / output statements
-5. **Memory Evaporation** — counts allocation nodes (`new`, reservoir literals, floods)
-6. **Canonical Convergence** — compares shadow and canonical via **structural AST equivalence** (alpha-renamed shape + return arity)
+- 🌊 first-match-wins rule evaluation
+- 🚦 `ALLOW`, `DENY`, and `ESCALATE` verdicts
+- 🧪 sandboxed expression evaluation
+- ⏱️ temporal policy windows
+- 🔏 HMAC and Ed25519 proof certificates
+- 🧷 strict proof verification flags for hardened use
+- 🔁 replay, freshness, revocation, context, and policy-hash checks
+- ⛓️ hash-linked audit archives with chain verification
 
-When a block can't be parsed, each analyzer falls back to the original lexical heuristic so partial input still yields a verdict.
+## Resistance Flow
 
-**Return codes:** `PromotionEngine` issues a verdict — if critical analyzers fail, promotion is **blocked**. Your code cannot graduate to production.
+```mermaid
+sequenceDiagram
+    participant Code as Thirsty code
+    participant Runtime as Governed runtime
+    participant TARL as T.A.R.L.
+    participant Broker as Capability broker
+    participant Audit as Audit archive
 
-### 🟠 Tier 5: TSCG — Thirsty Symbolic Constraint Grammar
-
-A symbolic security expression language with 9 core symbols, combined via pipeline, AND, and OR operators, **SHA-256 canonicalized** into a deterministic form.
-
-```tscg
-COG -> DNT ^ SHD -> CAP
+    Code->>Runtime: request governed call / side effect
+    Runtime->>Runtime: evaluate contracts
+    Runtime->>TARL: canonical context + authority
+    TARL-->>Runtime: verdict + proof material
+    alt ALLOW
+        Runtime->>Broker: require capability
+        Broker-->>Runtime: allowed decision
+        Runtime->>Audit: append proof
+        Runtime-->>Code: execute effect
+    else DENY or ESCALATE
+        Runtime->>Audit: append refusal proof
+        Runtime-->>Code: fail closed
+    end
 ```
 
-**9 symbols that exist:** COG (Cognition), DNT (Do Not Track), SHD (Shield), INV (Invariant), CAP (Capability), QRM (Quorum), COM (Communication), ANC (Anchor), RFX (Reflexive).
+## Defensive Capabilities
 
-**Operators:** pipeline (`->`), AND-combine (`^`), OR-combine (`||`). Parsed by `TSCGParser`, canonicalized by `canonical_form()` into a SHA-256 digest. `validate_symbols()` checks symbol compatibility.
+Thirsty-Lang's defensive model is designed for hostile or ambiguous execution
+contexts: agents, plugins, generated code, local scripts, imports, and tool
+adapters.
 
-### 🔴 Tier 6: TSCG-B — Binary Frame Protocol
+| Current | Capability | Defensive effect |
+|---|---|---|
+| 🌊 | Default-deny governed mode | Missing policy, authority, proof, or audit state refuses execution instead of granting it |
+| 🚪 | Capability broker | External effects such as FFI/native calls and tool invocations can be mediated before execution |
+| 🧰 | Sensitive stdlib gates | File, network, process, env, database, logging, and related calls are treated as capability-bearing effects |
+| 🔐 | Signed authority claims | Hardened mode can require authenticated authority instead of trusting a raw string like `admin` |
+| 🧾 | Proof verifier | Rejects tampered, stale, unsigned, wrong-key, revoked, or context-mismatched decisions when strict checks are enabled |
+| ⛓️ | Hash-linked audit | Proof archives can detect edits, deletions, and reordering |
+| ⏱️ | Trusted clock | Temporal policy can use signed time instead of the host clock |
+| 🗺️ | Path guard | Filesystem roots can be canonicalized and confined against traversal and symlink escape |
+| 🗳️ | Policy lint and quorum | Broad `ALLOW` rules can be flagged, and `ESCALATE` can require distinct signed approvals |
+| 🧯 | Parser fail-closed path | Governed parse errors discard recovered executable statements instead of running partial code |
 
-The same symbolic constraints, now as **binary frames** with integrity guarantees.
+The offensive challenge catalog is maintained in
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md). The feature matrix is maintained
+in [`docs/STATUS.md`](docs/STATUS.md).
 
-```
-┌────────┬──────────┬────────────┬──────────┬─────────────┐
-│ MAGIC  │ VERSION  │  FLAGS     │  PAYLOAD │   SHA-256   │
-│ TSGB   │  0x01    │  0x00      │  ...     │  32 bytes   │
-│ 4 bytes│ 1 byte   │  1 byte    │  var     │  32 bytes   │
-└────────┴──────────┴────────────┴──────────┴─────────────┘
-```
+## The Six-Tier Stack
 
-**What exists:** `TSCGBFrame.create()`, `StreamDecoder` (auto-resynchronizing for multi-frame transport), CRC32 integrity checks per frame, SHA-256 payload verification. Encode your TSCG constraints into binary, throw them over a wire, decode on the other side, get back your symbolic expression. Frame fragmentation support with EOF flag.
+```mermaid
+flowchart TB
+    T6["Tier 6: TSCG-B<br/>binary frames + integrity"]
+    T5["Tier 5: TSCG<br/>symbolic constraints"]
+    T4["Tier 4: Shadow Thirst<br/>mutation resistance"]
+    T3["Tier 3: T.A.R.L.<br/>policy + proof"]
+    T2["Tier 2: Thirst of Gods<br/>OOP / async / structured errors"]
+    T1["Tier 1: Thirsty-Lang<br/>lexer / parser / checker / runtime"]
 
----
-
-## Stdlib That's Actually Written
-
-The standard library is **14 namespaces, all implemented** (not stubs, not stubs-that-throw-NotImplementedError — actual code):
-
-| Namespace | What it does |
-|-----------|-------------|
-| `thirst::time` | `now()`, `epoch_ms()`, `sleep(seconds)` |
-| `thirst::crypto` | `sha256()`, `sign()`, `hmac()`, `random_bytes()`, `uuid4()` |
-| `thirst::reservoir` | `size()`, `push()`, `pop()`, `get()`, `flood()` |
-| `thirst::fs` | `read_file()`, `write_file()`, `exists()`, `list_dir()`, `mkdir()`, `remove()` |
-| `thirst::path` | `join()`, `dirname()`, `basename()`, `ext()`, `absolute()`, `relative()` |
-| `thirst::json` | `parse()`, `dump()` |
-| `thirst::dict` | `get()`, `set()` |
-| `thirst::http` | `get()`, `post()`, `put()`, `delete()` |
-| `thirst::env` | `get()`, `set()`, `all()` |
-| `thirst::sys` | `run()`, `exit()`, `args()`, `pid()` |
-| `thirst::log` | `info()`, `warn()`, `error()`, `debug()` |
-| `thirst::test` | `assert_eq()`, `assert_ne()`, `assert_true()`, `assert_raises()`, `describe()`, `it()` |
-| `thirst::collections` | `map()`, `filter()`, `reduce()`, `sort()`, `unique()`, `flatten()`, `zip()` |
-| `thirst::net` | `tcp_connect()`, `tcp_listen()`, `udp_send()` |
-| `thirst::sqldb` | `connect()`, `query()`, `execute()`, `close()` |
-
-**You can write production Thirsty-Lang programs** that open TCP sockets, compute SHA-256 hashes, query databases, and assert their own correctness. This is not a toy.
-
----
-
-## CLI That's Actually Shipped
-
-```
-thirsty <command> [options]
-
-run      → Execute .thirsty files
-repl     → Interactive REPL with .clear / .exit / state persistence
-fmt      → Format .thirsty source files
-new      → Scaffold a project with directory structure
-build    → Build (JS transpilation, etc.)
-govern   → Governance operations / divine contract validation
-add      → Add a package dependency
-audit    → Audit dependency integrity
-lock     → Generate lockfile for reproducible builds
-doctor   → Health check your project structure
-lsp      → Start Language Server Protocol endpoint
-docs     → Generate API documentation
+    T6 --> T5 --> T4 --> T3 --> T2 --> T1
 ```
 
-Installable via PyPI: `pip install thirsty-lang`. Then `thirsty --help` shows you all of them. `thirsty --version` shows you `Thirsty-Lang 0.8.1`.
+| Tier | Current | Name | What it contributes |
+|---:|---|---|---|
+| 1 | 💧 | Thirsty-Lang | Lexer, parser, checker, interpreter, formatter, CLI, module system, JS build target, contracts, and core syntax |
+| 2 | ⚡ | Thirst of Gods | Object-oriented, async, and structured-error validation over the real AST |
+| 3 | 🛡️ | T.A.R.L. | Policy-as-code, proof-carrying verdicts, temporal rules, composition, and audit hooks |
+| 4 | 🌑 | Shadow Thirst | Mutation analysis, determinism checks, plane isolation, purity checks, resource estimation, and promotion blocking |
+| 5 | 🧬 | TSCG | Symbolic constraint grammar with canonicalized constraint expressions |
+| 6 | 📡 | TSCG-B | Binary frame protocol with CRC32 and SHA-256 integrity checks |
 
----
+## Unique Language Features
 
-## Formal Grammar
+Thirsty-Lang uses its own vocabulary, but the names map to concrete execution
+behavior:
 
-A complete BNF grammar is documented at `docs/GRAMMAR.md`. Formal, recursive-descent parseable, covering all 6 tiers and all 30+ token types. Not aspirational — written, committed, pushed.
+| Syntax | Current | Meaning |
+|---|---|---|
+| `drink` | 💧 | declares bindings |
+| `pour` | 🌊 | outputs through the runtime |
+| `glass` | 🥛 | declares functions |
+| `fountain` | ⛲ | declares classes |
+| `refill` | 🔁 | loops |
+| `times` | ⏲️ | repeats a block |
+| `spillage` / `cleanup` / `throw` | 🧯 | models structured error handling |
+| `cascade` | ⚡ | models async flow |
+| `requires` / `ensures` / `invariant` | 🧪 | turns governance into executable checks |
+| `module name: governed` | 🛡️ | moves code into the governed execution path |
 
----
+Example:
 
-## The Architecture That Makes This Not Insane
+```thirsty
+module counters: core
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Tier 6: TSCG-B                       │
-│           Binary Frame Protocol (CRC32+SHA256)          │
-├─────────────────────────────────────────────────────────┤
-│                    Tier 5: TSCG                         │
-│      Symbolic Constraint Grammar (9 symbols, SHA-256)   │
-├─────────────────────────────────────────────────────────┤
-│                    Tier 4: Shadow Thirst                │
-│      Mutation Analysis — 6 analyzers, PromotionEngine   │
-├─────────────────────────────────────────────────────────┤
-│                    Tier 3: T.A.R.L.                     │
-│       Policy-as-Code — TarlVerdict (ALLOW/DENY/ESCALATE)│
-├─────────────────────────────────────────────────────────┤
-│                    Tier 2: Thirst of Gods               │
-│    Divine Contract Validation — OOP, Async, Error Hndl. │
-├─────────────────────────────────────────────────────────┤
-│                    Tier 1: Thirsty-Lang                 │
-│  Core Language — Lexer, Parser, Checker, Interpreter,   │
-│  Optimizer, Formatter, JS Transpiler, 14 stdlib modules │
-└─────────────────────────────────────────────────────────┘
-```
+fountain Counter {
+    drink count: Int = 0
 
-Default-DENY at every boundary. Data cannot flow upward without clearing the tier below. That's not a marketing slogan — it's how the architecture is built.
+    glass increment() {
+        this.count = this.count + 1
+        return this.count
+    }
+}
 
----
-
-## Verification
-
-**1212 tests pass.** Every time. Before every commit. No regressions.
-
-```
-$ python -m pytest tests/ -q
-........................................................................ [ 96%]
-.........................................                                [100%]
-1212 passed, 1 skipped in 4.5s
+drink c = new Counter()
+times 3 { pour c.increment() }
 ```
 
-The test suite covers: lexer, parser, checker, interpreter, formatter, module system, REPL, JS transpilation, T.A.R.L. policies, Shadow Thirst analyzers, TSCG parsing/canonicalization, TSCG-B frame encoding/decoding, Thirst of Gods divine contract validation, CLI commands, and end-to-end program execution.
+## CLI Surface
 
----
+Primary commands:
 
-## Install
-
-Thirsty-Lang is now available on PyPI.
-
-**For pinned installs:**
 ```bash
-pip install thirsty-lang==0.8.1
+thirsty --help
+thirsty run program.thirsty
+thirsty fmt program.thirsty
+thirsty build program.thirsty --target js
+thirsty govern program.thirsty
+thirsty lsp
+
+tarl --help
+tarl eval policy.tarl --context '{"role":"admin"}'
+tarl verify proof.json --require-signature --ed25519-only
+tarl audit verify-chain audit.db
+
+shadow-thirst --help
+tscg --help
+tscg-b --help
+thirst-of-gods --help
 ```
 
-**For upgrade installs:**
+| Command | Current | Surface |
+|---|---|---|
+| `thirsty` | 🌊 | run, format, build, govern, LSP, docs |
+| `tarl` | 🛡️ | evaluate policies, verify proofs, inspect audits |
+| `shadow-thirst` | 🌑 | analyze mutation and promotion risk |
+| `tscg` | 🧬 | parse and canonicalize symbolic constraints |
+| `tscg-b` | 📡 | encode and decode binary constraint frames |
+| `thirst-of-gods` | ⚡ | validate higher-tier language contracts |
+
+## Evidence-First Claims
+
+This project keeps defensive claims tied to files that can be inspected:
+
+- status matrix: [`docs/STATUS.md`](docs/STATUS.md)
+- adversary model and challenge catalog: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+- governance runtime model: [`docs/governance_model.md`](docs/governance_model.md)
+- grammar: [`docs/GRAMMAR.md`](docs/GRAMMAR.md)
+- language specification: [`docs/LANGUAGE_SPEC.md`](docs/LANGUAGE_SPEC.md)
+- production acceptance tests: [`tests/test_production_acceptance.py`](tests/test_production_acceptance.py)
+- offensive threat suites: [`tests/test_threat_model_broker.py`](tests/test_threat_model_broker.py), [`tests/test_threat_model_authority.py`](tests/test_threat_model_authority.py), [`tests/test_threat_model_audit_chain.py`](tests/test_threat_model_audit_chain.py), [`tests/test_threat_model_failclosed.py`](tests/test_threat_model_failclosed.py)
+
+Run the main validation suite:
+
 ```bash
-pip install --upgrade thirsty-lang
+python -m pytest tests/ -q
 ```
 
-**From source:**
+Optional static and package checks:
+
 ```bash
-git clone https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official.git
-cd Thirstys-Projects-Thirsty-Lang-UTF
-pip install -e .
+ruff check src tests
+mypy -p utf
+python -m build
 ```
 
----
+## Why This Exists
+
+Most languages ask: can this code run?
+
+Thirsty-Lang asks harder questions:
+
+- Who is acting?
+- What authority was proven?
+- Which policy allowed it?
+- What exact context was evaluated?
+- What proof was produced?
+- Can the audit chain detect tampering?
+- Can a build target preserve governance, or does it have to confess the loss?
+- Can an agent or tool adapter reach a side effect without crossing the broker?
+
+That is the war surface now. Syntax still matters. Performance still matters.
+Ergonomics still matter. But governance is becoming part of the language
+runtime, not a document stapled to the side.
+
+```text
+        source
+          |
+       parser
+          |
+   contracts + policy
+          |
+    ALLOW / DENY / ESCALATE
+          |
+       proof
+          |
+       audit
+          |
+   only then: effect
+```
 
 ## License
 
-Copyright 2026 **Thirsty's Projects LLC** — Apache 2.0
+Apache-2.0. Copyright 2026 Thirsty's Projects LLC.
 
-```
-„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
- „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-  „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-   „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-    „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-     „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-      „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-       „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-        „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-         „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-          „„„„„„„„„„„„„„„„„„„„„„„„„„„„„„
-           „„„„„„„„„„„„„„„„„„„„„„„„„„„„
-            „„„„„„„„„„„„„„„„„„„„„„„„„„
-             „„„„„„„„„„„„„„„„„„„„„„„„
-              „„„„„„„„„„„„„„„„„„„„„„
-               „„„„„„„„„„„„„„„„„„„„
-                „„„„„„„„„„„„„„„„„„
-                 „„„„„„„„„„„„„„„„
-                  „„„„„„„„„„„„„„
-                   „„„„„„„„„„„„
-                    „„„„„„„„„„
-                     „„„„„„„„
-                      „„„„„„
-                       „„„„
-                        „„
-                         „
-```
-
-**Contact:** `FounderOfTP@thirstysprojects.com`
+Security reports: `FounderOfTP@thirstysprojects.com`
