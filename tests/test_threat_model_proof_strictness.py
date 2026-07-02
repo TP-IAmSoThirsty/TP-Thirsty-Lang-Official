@@ -47,8 +47,14 @@ def _public_bytes(private_bytes=PRIVATE_BYTES):
     )
 
 
-def test_default_verifier_remains_compatible_with_unsigned_proofs():
-    assert ProofVerifier().verify(_unsigned_proof()).valid
+def test_default_verifier_rejects_unsigned_proofs():
+    result = ProofVerifier().verify(_unsigned_proof())
+    assert not result.valid
+    assert result.checks["signature"] is False
+
+
+def test_permissive_verifier_allows_unsigned_proofs_when_explicit():
+    assert ProofVerifier(require_signature=False).verify(_unsigned_proof()).valid
 
 
 def test_strict_verifier_rejects_unsigned_proof():

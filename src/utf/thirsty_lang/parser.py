@@ -3,6 +3,8 @@ Thirsty-Lang Recursive Descent Parser
 Produces an AST Program from a list of Tokens. Supports error recovery
 and "did you mean?" suggestions within edit distance 3.
 """
+import json
+
 from utf.thirsty_lang.ast import (
     ArmorExpr,
     ArrayLiteral,
@@ -496,8 +498,7 @@ class Parser:
             kind = self._advance().type
             c_start = self.current
             expr = self._parse_expr()
-            text = " ".join(
-                t.lexeme for t in self.tokens[c_start:self.current])
+            text = self._annotation_text(c_start, self.current)
             clauses[kind] = (expr, text)
         body = self._parse_block()
         if clauses:
@@ -513,6 +514,15 @@ class Parser:
                 span=self._span(start))
         return FunctionDecl(name=name_token.lexeme, params=params,
                             return_type=return_type, body=body, span=self._span(start))
+
+    def _annotation_text(self, start: int, end: int) -> str:
+        parts = []
+        for token in self.tokens[start:end]:
+            if token.type == TokenType.STRING:
+                parts.append(json.dumps(token.lexeme))
+            else:
+                parts.append(token.lexeme)
+        return " ".join(parts)
 
     def _parse_class_decl(self) -> ClassDecl:
         start = self._advance()

@@ -44,11 +44,11 @@ gpg --send-keys <YOUR_KEY_ID> --keyserver keyserver.ubuntu.com
 python -m build
 
 # Sign wheel
-gpg --detach-sign --armor dist/thirsty_lang-0.8.0-py3-none-any.whl
-# Creates: thirsty_lang-0.8.0-py3-none-any.whl.asc
+gpg --detach-sign --armor dist/thirsty_lang-0.8.2-py3-none-any.whl
+# Creates: thirsty_lang-0.8.2-py3-none-any.whl.asc
 
 # Upload both files to PyPI
-twine upload dist/thirsty_lang-0.8.0* --sign --identity <YOUR_KEY_ID>
+twine upload dist/thirsty_lang-0.8.2* --sign --identity <YOUR_KEY_ID>
 ```
 
 ### Automated Signing (GitHub Actions)
@@ -89,7 +89,7 @@ curl -O https://keyserver.ubuntu.com/pks/lookup?op=get&search=<KEY_ID>
 gpg --import public_key.asc
 
 # Verify signature
-gpg --verify thirsty_lang-0.8.0-py3-none-any.whl.asc thirsty_lang-0.8.0-py3-none-any.whl
+gpg --verify thirsty_lang-0.8.2-py3-none-any.whl.asc thirsty_lang-0.8.2-py3-none-any.whl
 ```
 
 ## Best Practices

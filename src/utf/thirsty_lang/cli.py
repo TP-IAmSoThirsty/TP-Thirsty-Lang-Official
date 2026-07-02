@@ -77,7 +77,22 @@ def main():
     build_parser.add_argument("--target", choices=["llvm-ir", "llvm-obj", "llvm-exe", "llvm-asm", "llvm-jit", "js", "wasm-pyodide"], default="js", help="Build target")
     build_parser.add_argument("--emit-manifest", action="store_true", help="Emit governance manifest")
     build_parser.add_argument("--allow-governance-loss", action="store_true", help="Permit building a governed module to a target that drops the governed runtime (records the loss in the manifest)")
+    build_parser.add_argument("--policy", type=str, help="Path to a .tarl policy file to bind into the emitted manifest")
+    build_parser.add_argument("--context-schema", type=str, metavar="FILE", help="Path to an explicit context schema JSON file for the emitted manifest")
     build_parser.add_argument("file", nargs="?", help="Entry point .thirsty file")
+
+    # prove
+    prove_parser = subparsers.add_parser("prove", help="Emit static proof-obligation report without executing effects")
+    prove_parser.add_argument("file", help="Path to .thirsty file")
+    prove_parser.add_argument("--policy", required=True, type=str, help="Path to the .tarl policy file")
+    prove_parser.add_argument("--context-schema", type=str, metavar="FILE", help="Path to an explicit context schema JSON file")
+    prove_parser.add_argument("--emit-manifest", action="store_true", help="Write <program>.proof-obligations.json as well as stdout")
+
+    # explain-denial
+    explain_parser = subparsers.add_parser("explain-denial", help="Explain missing policy/context/authority/proof conditions")
+    explain_parser.add_argument("file", help="Path to .thirsty file")
+    explain_parser.add_argument("--policy", type=str, help="Path to a .tarl policy file")
+    explain_parser.add_argument("--context-schema", type=str, metavar="FILE", help="Path to an explicit context schema JSON file")
 
     # govern
     govern_parser = subparsers.add_parser("govern", help="Governance operations")
@@ -128,6 +143,10 @@ def main():
             cmd_new(args)
         elif args.command == "build":
             cmd_build(args)
+        elif args.command == "prove":
+            cmd_prove(args)
+        elif args.command == "explain-denial":
+            cmd_explain_denial(args)
         elif args.command == "govern":
             cmd_govern(args)
         elif args.command == "add":
@@ -149,7 +168,9 @@ def main():
         sys.exit(1)
 
 
-def _lex_parse_check(file_path: str, mode: str = "core"):
+def _lex_parse_check(
+    file_path: str, mode: str = "core", effect_warnings: bool = False
+):
     """Helper: lex, parse, and type-check a file. Returns (ast, errors, checker)."""
     from utf.thirsty_lang.checker import check_ast
     from utf.thirsty_lang.lexer import Lexer
@@ -167,7 +188,7 @@ def _lex_parse_check(file_path: str, mode: str = "core"):
     # Check for lexer/parser errors
     errors = list(lexer.errors)
     errors.extend(parser.errors)
-    errors.extend(check_ast(ast))
+    errors.extend(check_ast(ast, effect_warnings=effect_warnings))
 
     return ast, errors, source
 
@@ -569,8 +590,15 @@ def cmd_build(args):
         print(f"Built: {output_path}")
 
     if args.emit_manifest:
-        _emit_manifest(ast, args.file, target=target,
-                       governance_loss=governance_loss)
+        _emit_manifest(
+            ast,
+            args.file,
+            source=source,
+            target=target,
+            governance_loss=governance_loss,
+            policy_path=getattr(args, "policy", None),
+            context_schema_path=getattr(args, "context_schema", None),
+        )
 
 
 def _transpile_to_js(ast) -> str:
@@ -869,34 +897,109 @@ def _build_pyodide(source: str, base: str) -> str:
     return out_path
 
 
-def _emit_manifest(ast, file_path, target=None, governance_loss=False):
+def _read_optional_policy(policy_path: str | None) -> str | None:
+    if policy_path is None:
+        return None
+    if not os.path.isfile(policy_path):
+        raise FileNotFoundError(f"policy file not found: {policy_path}")
+    with open(policy_path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _emit_manifest(
+    ast,
+    file_path,
+    source: str,
+    target=None,
+    governance_loss=False,
+    policy_path: str | None = None,
+    context_schema_path: str | None = None,
+):
     """Emit governance manifest."""
-    import json
-    manifest = {
-        "file": file_path,
-        "mode": "core",
-        "functions": [],
-        "build": {
-            "target": target,
-            "governance_loss": governance_loss,
+    from utf.thirsty_lang.proof_obligations import extract_proof_obligations
+
+    policy_text = _read_optional_policy(policy_path)
+    manifest = extract_proof_obligations(
+        ast,
+        source,
+        file_path,
+        policy_text=policy_text,
+        policy_path=policy_path,
+        explicit_schema_path=context_schema_path,
+        target=target,
+        governance_loss=governance_loss,
+    )
+    # Backward-compatible policy envelope retained for existing consumers.
+    manifest["governance_policy"] = {
+        "tarl": {
+            "path": policy_path,
+            "hash": manifest["policy_dependencies"]["hash"],
         },
-        "governance_policy": {
-            "tarl": {},
-            "shadow_thirst": {},
-        }
+        "shadow_thirst": manifest["shadow_convergence_result"],
     }
-    if ast.header:
-        manifest["mode"] = ast.header.mode
-    for stmt in ast.stmts:
-        if hasattr(stmt, 'name'):
-            info = {"name": getattr(stmt, 'name', 'unknown')}
-            if hasattr(stmt, 'requires_annotation'):
-                info["requires"] = stmt.requires_annotation
-            manifest["functions"].append(info)
     manifest_path = os.path.splitext(file_path)[0] + ".manifest.json"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"Manifest: {manifest_path}")
+
+
+def _proof_report(args, require_policy: bool) -> tuple[dict, list]:
+    from utf.thirsty_lang.checker import check_ast
+    from utf.thirsty_lang.lexer import Lexer
+    from utf.thirsty_lang.parser import Parser
+    from utf.thirsty_lang.proof_obligations import extract_proof_obligations
+
+    if not os.path.isfile(args.file):
+        print(f"Error: File not found: {args.file}", file=sys.stderr)
+        sys.exit(1)
+    policy_path = getattr(args, "policy", None)
+    if require_policy and not policy_path:
+        print("Error: --policy is required", file=sys.stderr)
+        sys.exit(1)
+    policy_text = _read_optional_policy(policy_path)
+    with open(args.file, encoding="utf-8") as f:
+        source = f.read()
+    lexer = Lexer(source)
+    parser = Parser(lexer.lex())
+    ast = parser.parse()
+    diagnostics = []
+    diagnostics.extend(lexer.errors)
+    diagnostics.extend(parser.errors)
+    diagnostics.extend(check_ast(ast, effect_warnings=True))
+    report = extract_proof_obligations(
+        ast,
+        source,
+        args.file,
+        policy_text=policy_text,
+        policy_path=policy_path,
+        explicit_schema_path=getattr(args, "context_schema", None),
+        diagnostics=diagnostics,
+    )
+    return report, diagnostics
+
+
+def cmd_prove(args):
+    """Emit a proof-obligation report without executing side effects."""
+    report, diagnostics = _proof_report(args, require_policy=True)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    if args.emit_manifest:
+        manifest_path = os.path.splitext(args.file)[0] + ".proof-obligations.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, sort_keys=True)
+    has_errors = any(d.severity == "error" for d in diagnostics)
+    schema = report.get("context_schema") or {}
+    schema_failed = schema.get("status") not in {"complete", "explicit"}
+    if has_errors or schema_failed:
+        sys.exit(1)
+
+
+def cmd_explain_denial(args):
+    """Explain missing policy/context/authority/proof conditions."""
+    from utf.thirsty_lang.proof_obligations import denial_explanation
+
+    report, _diagnostics = _proof_report(args, require_policy=False)
+    explanation = denial_explanation(report)
+    print(json.dumps(explanation, indent=2, sort_keys=True))
 
 
 def cmd_govern(args):
@@ -926,7 +1029,7 @@ def cmd_govern(args):
         tarl_policy = "# Auto-generated T.A.R.L. Policy\n"
         for stmt in ast.stmts:
             if hasattr(stmt, 'name') and getattr(stmt, 'name', None):
-                tarl_policy += f'\nwhen name == "{stmt.name}" => ALLOW\n'
+                tarl_policy += f'\nwhen action == "{stmt.name}" => ALLOW\n'
         tarl_policy += "\nwhen true => DENY  # Default deny\n"
 
         # Evaluate policy against each function via TarlRuntime
@@ -940,9 +1043,12 @@ def cmd_govern(args):
         for stmt in ast.stmts:
             if hasattr(stmt, 'name') and hasattr(stmt, 'params'):
                 context = {
-                "name": stmt.name,
-                "params": len(getattr(stmt, 'params', [])),
-                "body_len": len(stmt.body.stmts) if hasattr(stmt.body, 'stmts') else 0,
+                    "action": stmt.name,
+                    "params": len(getattr(stmt, 'params', [])),
+                    "body_len": (
+                        len(stmt.body.stmts)
+                        if hasattr(stmt.body, 'stmts') else 0
+                    ),
                 }
                 decision = evaluate_policy(context, policy_text=tarl_policy)
                 verdicts.append((stmt.name, decision.verdict.value if hasattr(decision, 'verdict') else str(decision)))

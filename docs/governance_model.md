@@ -107,16 +107,56 @@ than executed in a detached, ungoverned interpreter. A `governed` module that
 fails to parse also fails closed — its recovered statements are discarded and
 execution is refused.
 
-For verification, `ProofVerifier` defaults to permissive (an unsigned proof is
-accepted). Hardened deployments can opt in to strict checks —
-`require_signature`, `allowed_signature_algorithms` (e.g. Ed25519-only), and
-`require_policy_source` — exposed on the CLI as
-`tarl verify --require-signature --ed25519-only`.
+For verification, `ProofVerifier` rejects unsigned proofs by default. Local
+inspection of unsigned proofs must opt in explicitly with
+`ProofVerifier(require_signature=False)` or `tarl verify --allow-unsigned`.
+Hardened deployments can also restrict signature algorithms (for example,
+Ed25519-only) and require policy-source binding. The CLI exposes these as
+`tarl verify --ed25519-only --policy <policy.tarl>`.
 
 Building a `governed` module to a target that drops the governed runtime
 (`js`, `llvm-*`, `wasm-pyodide`) is refused by default; `thirsty build
 --allow-governance-loss` is required to proceed and records the loss in the
-emitted manifest.
+emitted manifest. When `--emit-manifest` is used, the manifest records source
+hash, optional policy hash, required capabilities, derived or attached context
+schema, authority mode, proof verification mode, audit requirement, Shadow
+Thirst status when statically visible, and governance-loss status.
+
+### Static proof-obligation reporting
+
+`thirsty prove` is a static, no-side-effect path:
+
+```bash
+thirsty prove program.thirsty --policy policy.tarl --emit-manifest
+```
+
+It lexes, parses, checks, and walks the AST, then emits a machine-readable JSON
+report. It does not instantiate the interpreter and does not execute program
+side effects. The report includes functions, imports, sensitive stdlib calls,
+governed calls, required TARL actions, required capabilities, context schema,
+authority requirements, contract obligations, proof mode, audit requirement,
+Shadow Thirst status, governance-loss status, diagnostics, and unresolved proof
+gaps. Required TARL actions include capability actions and governed function-call
+actions.
+
+Context schema handling is fail-closed. If `--context-schema schema.json` is
+provided, that explicit schema is authoritative. Without an explicit schema,
+`thirsty prove` derives field names and simple kinds from TARL policy
+references where possible. Ambiguous references are reported as
+`context_schema.status = incomplete`, and `thirsty prove` exits non-zero instead
+of claiming the proof obligation set is complete.
+Explicit schema files may use a list of field objects or a compact mapping:
+
+```json
+{"fields": {"user.role": "string", "risk": {"kind": "number", "required": false}}}
+```
+
+Malformed explicit schema entries fail with validation errors instead of being
+treated as proof-ready.
+
+`thirsty explain-denial program.thirsty --policy policy.tarl` emits a
+machine-readable explanation of missing policy, context, authority, and proof
+conditions for the same static obligation set.
 
 From the CLI:
 
@@ -153,6 +193,13 @@ Evaluate a policy against a context:
 
 ```bash
 tarl eval policy.tarl --context '{"role":"user","level":2}'
+```
+
+Temporal policy windows and `CURRENT_*` builtins require a trusted evaluation
+time on the CLI:
+
+```bash
+tarl eval policy.tarl --context '{"role":"user"}' --now 2026-07-01T12:00:00Z
 ```
 
 Parse and display a policy:

@@ -132,7 +132,7 @@ is what Thirsty-Lang must do to claim resistance.
 | C022 | Store tampered proof in archive and query without verifier | Must be documented as unverified unless verifier supplied | Covered by `tests/test_threat_model_audit_chain.py` (hash-linked chain) and archive `query(verifier=...)` |
 | C023 | Replay old ALLOW proof for new context | Must reject by context hash and freshness policy | Covered by `tests/test_threat_model_replay.py` — `ProofVerifier(expected_context=...)` rejects context-mismatched replay |
 | C024 | Replay current ALLOW proof for same context after policy revocation | Must reject by policy version/freshness | Covered by `tests/test_threat_model_replay.py` — freshness (`max_age_seconds`), `revoked_policy_hashes`, and `ReplayGuard` |
-| C025 | Downgrade Ed25519 proof to unsigned proof | Serious deployments must require signed proof | Covered by `tests/test_threat_model_proof_strictness.py` — strict `ProofVerifier(require_signature=…, allowed_signature_algorithms=…)` and `tarl verify --require-signature --ed25519-only` reject unsigned/HMAC/wrong-key/tampered proofs (opt-in; permissive default unchanged) |
+| C025 | Downgrade Ed25519 proof to unsigned proof | Verifiers must reject unsigned proofs unless unsigned inspection is explicit | Covered by `tests/test_threat_model_proof_strictness.py` and `tests/test_peer_review_0_8_1_tarl_regressions.py` — `ProofVerifier()` and `tarl verify` require signatures by default; `require_signature=False` / `--allow-unsigned` is explicit |
 | C026 | Delete DENY proof from audit archive | Hash-linked append-only audit must reveal gap | Covered by `tests/test_threat_model_audit_chain.py` — deleting a record breaks the hash chain (`verify_chain`) |
 | C027 | Forge authority by setting CLI `--authority admin` | Authority must come from authenticated identity, not string input alone | Covered by `tests/test_threat_model_authority.py` — signed `AuthorityClaim` required; bare `--authority` denied in hardened mode |
 | C028 | Put authority in environment variable | Must not grant authority from env alone | Covered by `tests/test_threat_model_authority.py` — authority is `authority_authenticated == False` unless a signed claim verifies |
@@ -158,6 +158,13 @@ is what Thirsty-Lang must do to claim resistance.
 | C048 | Use parallel evaluation race to alter first-match semantics | Policy order must win | Covered by TARL tests |
 | C049 | Use archive query without signature verification as proof of validity | CLI/docs must distinguish stored from verified | Covered by `tests/test_threat_model_audit_chain.py` and `tarl audit verify-chain`; `query(verifier=...)` distinguishes stored from verified |
 | C050 | Use social pressure language to force high-risk ALLOW | ESCALATE rules and quorum required | Covered by `tests/test_threat_model_lint_quorum.py` — `QuorumResolver` upgrades ESCALATE only on distinct signed approvals |
+| C051 | Claim governed readiness for a program without enumerating effects/proof obligations | Static report must list governed calls, sensitive stdlib calls, capabilities, TARL actions, context schema, authority, contracts, and unresolved gaps before execution | Covered by `tests/test_proof_obligations.py` — `thirsty prove` emits a machine-readable obligation report without running side effects |
+| C052 | Infer an unsafe or ambiguous policy context schema | Derived schema must be marked incomplete and make `thirsty prove` fail closed unless an explicit schema is supplied | Covered by `tests/test_proof_obligations.py` — ambiguous field references produce `context_schema.status = incomplete` and exit non-zero |
+| C053 | Use numeric strings to bypass ordering thresholds | Ordering comparisons must compare numeric-looking strings numerically and deny on unorderable values | Covered by `tests/test_peer_review_0_8_1_tarl_regressions.py` — `"50" > 9` trips the DENY rule; `"admin" > 9` fails closed |
+| C054 | Hide a malformed DENY guard before a broad ALLOW | Policy load and residual runtime evaluation errors must reject or DENY, never skip to a later ALLOW | Covered by `tests/test_peer_review_0_8_1_tarl_regressions.py` and `tests/test_tarl.py::TestThrowStats` |
+| C055 | Accept a forged unsigned proof as valid by default | Verification default must require a signature and trace consistency must reject verdict mismatch when trace declares a verdict | Covered by `tests/test_peer_review_0_8_1_tarl_regressions.py` |
+| C056 | Evaluate temporal policy from spoofed host clock through `tarl eval` | CLI temporal evaluation must require explicit trusted time | Covered by `tests/test_peer_review_0_8_1_tarl_regressions.py` — `tarl eval` refuses temporal policies without `--now` |
+| C057 | Generate auto-TARL policies keyed on a context field the runtime never supplies | Generated policies must use `action`, matching governed runtime context | Covered by `tests/test_peer_review_0_8_1_tarl_regressions.py` |
 
 ## Mandatory Invariants
 
@@ -201,6 +208,8 @@ Implemented this hardening pass:
 | `tests/test_threat_model_lint_quorum.py` | `lint_policy` flags broad/ungated ALLOW; `QuorumResolver` upgrades ESCALATE only on distinct signed approvals (C039/C050) |
 | `tests/test_threat_model_build_outputs.py` | Governance-dropping build targets are refused for governed source unless explicitly opted in and disclosed (C034) |
 | `tests/test_threat_model_parser_fail_closed.py` | Governed parse errors fail closed: no executable statements survive recovery (C036) |
+| `tests/test_proof_obligations.py` | Static proof-obligation extraction, derived schema, build-manifest proof metadata, denial explanation, no-side-effect prove path, and proof/audit regression coverage (C051-C052) |
+| `tests/test_peer_review_0_8_1_tarl_regressions.py` | TARL adversarial peer-review regressions for comparison typing, fail-closed evaluation, secure verifier defaults, trusted CLI time, and auto-TARL action context (C053-C057) |
 
 The earlier "still required" suites (proof replay, policy downgrade, context
 poisoning, archive tamper, agent tools, resource failure) were implemented under
@@ -227,19 +236,29 @@ The following surfaces are implemented and tested today:
 - Temporal policy windows and first-match-wins semantics are covered by tests.
 - Imported `.thirsty` modules execute under the caller's governed runtime, so
   their top-level effects and returned closures are gated (not run detached).
-- Strict, opt-in proof verification can require a signature and restrict the
-  signature family to Ed25519 (`ProofVerifier` / `tarl verify --require-signature
-  --ed25519-only`); the permissive default is unchanged.
+- Proof verification requires a signature by default, can restrict the signature
+  family to Ed25519 (`ProofVerifier` / `tarl verify --ed25519-only`), and only
+  accepts unsigned proofs when `require_signature=False` or `--allow-unsigned`
+  is explicit.
 - Governance-dropping build targets are refused for governed source unless
   `--allow-governance-loss` is given, which warns and records the loss in the
   emitted manifest.
 - Governed modules that fail to parse fail closed: no recovered statement
   executes, and the interpreter raises a denial.
+- `thirsty prove program.thirsty --policy policy.tarl` parses and checks source
+  and emits a machine-readable proof-obligation report without executing program
+  side effects. The report lists functions, imports, sensitive stdlib calls,
+  governed calls, required TARL actions, derived or attached context schema,
+  authority requirements, contract obligations, proof mode, audit requirement,
+  Shadow Thirst status, governance-loss status, and unresolved proof gaps.
+- `thirsty explain-denial program.thirsty --policy policy.tarl` reports which
+  policy, context, authority, or proof condition is missing for the static
+  obligation set.
 
 ## Remaining Gaps
 
 The hardening pass closed the critical/high catalog items (C022–C028, C033,
-C037–C043, C045–C046, C049–C050). What remains is breadth and operational
+C037–C043, C045–C046, C049–C057). What remains is breadth and operational
 hardening, not a known critical bypass:
 
 1. **Adapter breadth.** `CapabilityBroker` is the single mediation point and is
@@ -252,15 +271,24 @@ hardening, not a known critical bypass:
    left to the embedding.
 3. **Trust roots.** Authority-issuer, time-authority, and approver keys must be
    provisioned and rotated by the deployment; no key-management is bundled.
-4. **Schema authoring.** Context schemas are enforced when attached; deriving a
-   schema automatically from a policy's referenced fields is future work.
+
+## Proof-Obligation Behavior Contracts
+
+- Context schemas are enforced when attached, and `thirsty prove` can derive
+  simple field kinds from TARL policy references.
+- Ambiguous context references remain incomplete and fail closed; use an
+  explicit schema file for policy expressions the static derivation cannot
+  prove.
+- `thirsty prove` is intentionally static: it produces the proof-obligation
+  report before execution and does not replace runtime TARL verdict enforcement,
+  proof verification, broker mediation, or audit append behavior.
 
 ## Acceptance Bar For Hardened Runtime
 
 Thirsty-Lang can claim hardened governance-substrate status when:
 
 1. Every challenge in the catalog is passing with a test or documented out of
-   scope. **Met** — C001–C050 are each Covered or Deferred-with-reason above.
+   scope. **Met** — C001–C057 are each Covered or Deferred-with-reason above.
 2. All side-effect adapters are mediated by the same broker. **Met (mechanism)**
    — `utf.tarl.broker.CapabilityBroker`; adapter-breadth rollout tracked in
    Remaining Gaps #1.

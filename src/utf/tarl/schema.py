@@ -8,8 +8,8 @@ Policies decide over a context dict, but an attacker controls that dict's shape
     ``amount`` at all; a naive ``when amount > 100`` silently fails to match and
     the context slips to a more permissive later rule or to DEFAULT-DENY for the
     wrong reason.
-  * **Type confusion (C046)** — ``amount`` arrives as the string ``"0"`` or a
-    dict, so numeric comparisons behave unpredictably.
+  * **Type confusion (C046)** — ``amount`` arrives as a non-numeric string or a
+    dict, so the policy cannot prove the comparison is well-typed.
 
 A :class:`ContextSchema` declares the fields a policy requires and their accepted
 types. The runtime validates the context **before** any rule is evaluated; a

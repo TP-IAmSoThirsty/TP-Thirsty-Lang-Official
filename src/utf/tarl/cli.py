@@ -3,6 +3,7 @@ T.A.R.L. CLI — Evaluate and analyze TARL policy files.
 """
 import argparse
 import dataclasses
+import datetime
 import json
 import sys
 
@@ -31,6 +32,14 @@ def main():
     )
     eval_parser.add_argument(
         '--json', '-j', action='store_true', help='Output as JSON'
+    )
+    eval_parser.add_argument(
+        '--now', default=None, metavar='ISO8601',
+        help=(
+            'Trusted evaluation time for temporal policies/builtins. '
+            'Required when a policy uses valid_from, valid_until, '
+            'if_unresolved_after, or CURRENT_* builtins.'
+        ),
     )
 
     # parse
@@ -64,7 +73,11 @@ def main():
     )
     verify_parser.add_argument(
         '--require-signature', action='store_true',
-        help='Strict: reject unsigned proofs',
+        help='Reject unsigned proofs (default; retained for compatibility)',
+    )
+    verify_parser.add_argument(
+        '--allow-unsigned', action='store_true',
+        help='Permissive: allow unsigned proofs for local inspection',
     )
     verify_parser.add_argument(
         '--ed25519-only', action='store_true',
@@ -306,11 +319,21 @@ def _cmd_eval(args):
     with open(args.policy_file) as f:
         policy_text = f.read()
     try:
+        policy = PolicyParser.parse(policy_text)
+    except Exception as e:
+        print(f"Error parsing policy: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
         context = json.loads(args.context)
     except json.JSONDecodeError as e:
         print(f"Error parsing context JSON: {e}", file=sys.stderr)
         sys.exit(1)
-    decision = evaluate_policy(context, policy_text=policy_text)
+    try:
+        trusted_now = _trusted_eval_now(args.now, policy)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    decision = evaluate_policy(context, policy=policy, now=trusted_now)
     if args.json:
         print(json.dumps({
             'verdict': decision.verdict.value,
@@ -327,12 +350,44 @@ def _cmd_eval(args):
             print(f"Rule:    {decision.matched_rule}")
 
 
+def _trusted_eval_now(
+    raw_now: str | None,
+    policy,
+) -> datetime.datetime | None:
+    temporal_policy = any(
+        [
+            policy.valid_from,
+            policy.valid_until,
+            policy.if_unresolved_after is not None,
+            any("CURRENT_" in rule.condition for rule in policy.rules),
+        ]
+    )
+    if raw_now is None:
+        if temporal_policy:
+            raise ValueError(
+                "tarl eval requires --now for temporal policies or CURRENT_* "
+                "builtins; refusing host-clock evaluation"
+            )
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(raw_now.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"invalid --now ISO-8601 value: {raw_now!r}") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.UTC)
+    return parsed
+
+
 # ── parse ─────────────────────────────────────────────────────────────────────
 
 def _cmd_parse(args):
     with open(args.policy_file) as f:
         policy_text = f.read()
-    policy = PolicyParser.parse(policy_text)
+    try:
+        policy = PolicyParser.parse(policy_text)
+    except Exception as e:
+        print(f"Error parsing policy: {e}", file=sys.stderr)
+        sys.exit(1)
     print(f"Policy: {policy.name}")
     print(f"Rules:  {len(policy.rules)}")
     print()
@@ -372,7 +427,7 @@ def _cmd_verify(args):
         from utf.tarl.durable import DurableReplayGuard
         replay_guard = DurableReplayGuard(args.replay_db)
     verifier = ProofVerifier(
-        require_signature=getattr(args, "require_signature", False),
+        require_signature=not getattr(args, "allow_unsigned", False),
         allowed_signature_algorithms=(
             {"ed25519"} if getattr(args, "ed25519_only", False) else None
         ),

@@ -780,7 +780,7 @@ class TestArchiveQueryVerifier(unittest.TestCase):
     def test_query_with_verifier_keeps_valid_sig(self):
         from utf.tarl.verifier import ProofVerifier
         proof = self._make_signed_proof()
-        verifier = ProofVerifier()
+        verifier = ProofVerifier(require_signature=False)
         verifier.add_hmac_key("k1", b"secret-key-for-testing")
         with TarlAuditArchive(":memory:") as arc:
             arc.store(proof)
@@ -792,7 +792,7 @@ class TestArchiveQueryVerifier(unittest.TestCase):
         from utf.tarl.verifier import ProofVerifier
         proof = self._make_signed_proof()
         # Register the WRONG key → signature will fail verification
-        verifier = ProofVerifier()
+        verifier = ProofVerifier(require_signature=False)
         verifier.add_hmac_key("k1", b"wrong-key")
         with TarlAuditArchive(":memory:") as arc:
             arc.store(proof)
@@ -803,7 +803,7 @@ class TestArchiveQueryVerifier(unittest.TestCase):
         """Unsigned proofs (sig='') pass through even with a verifier attached."""
         from utf.tarl.verifier import ProofVerifier
         proof = self._make_unsigned_proof()
-        verifier = ProofVerifier()
+        verifier = ProofVerifier(require_signature=False)
         with TarlAuditArchive(":memory:") as arc:
             arc.store(proof)
             results = arc.query(verifier=verifier)

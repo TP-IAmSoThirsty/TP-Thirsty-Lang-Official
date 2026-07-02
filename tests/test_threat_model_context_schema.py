@@ -75,7 +75,7 @@ def test_schema_violation_proof_is_consistent_and_records_fields():
     assert proof.verdict == TarlVerdict.DENY
     assert any("amount" in str(e.get("reason", "")) for e in proof.trace)
     # The proof must still verify (trace internally consistent, rule_index == -1).
-    assert ProofVerifier().verify(proof).checks["trace"] is True
+    assert ProofVerifier(require_signature=False).verify(proof).checks["trace"] is True
 
 
 def test_schema_from_dict_round_trips():

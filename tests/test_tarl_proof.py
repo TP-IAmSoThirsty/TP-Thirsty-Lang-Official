@@ -371,33 +371,33 @@ class TestEvaluateWithProof(unittest.TestCase):
 class TestProofVerifier(unittest.TestCase):
 
     def test_returns_self_from_add_key(self):
-        v = ProofVerifier()
+        v = ProofVerifier(require_signature=False)
         result = v.add_hmac_key("k1", b"secret")
         self.assertIs(result, v)
 
     def test_verify_returns_verification_result(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertIsInstance(result, VerificationResult)
 
     def test_unsigned_proof_valid_without_keys(self):
         rt = _runtime()  # no signing key
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertTrue(result.valid)
 
     def test_signed_proof_valid_with_correct_key(self):
         rt = _signed_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        v = ProofVerifier().add_hmac_key("k1", _SECRET)
+        v = ProofVerifier(require_signature=False).add_hmac_key("k1", _SECRET)
         result = v.verify(proof)
         self.assertTrue(result.valid)
 
     def test_signed_proof_invalid_with_wrong_key(self):
         rt = _signed_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        v = ProofVerifier().add_hmac_key("k1", b"wrong-secret-32-bytes-padding!!")
+        v = ProofVerifier(require_signature=False).add_hmac_key("k1", b"wrong-secret-32-bytes-padding!!")
         result = v.verify(proof)
         self.assertFalse(result.valid)
         self.assertFalse(result.checks["signature"])
@@ -405,13 +405,13 @@ class TestProofVerifier(unittest.TestCase):
     def test_signed_proof_invalid_without_key(self):
         rt = _signed_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertFalse(result.valid)
 
     def test_ed25519_signed_proof_valid_with_public_key(self):
         rt = _ed25519_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        v = ProofVerifier().add_ed25519_key("ed1", _ed25519_public_bytes())
+        v = ProofVerifier(require_signature=False).add_ed25519_key("ed1", _ed25519_public_bytes())
         result = v.verify(proof)
         self.assertTrue(result.valid)
 
@@ -422,7 +422,7 @@ class TestProofVerifier(unittest.TestCase):
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw,
         )
-        v = ProofVerifier().add_ed25519_key("ed1", wrong_public)
+        v = ProofVerifier(require_signature=False).add_ed25519_key("ed1", wrong_public)
         result = v.verify(proof)
         self.assertFalse(result.valid)
         self.assertFalse(result.checks["signature"])
@@ -430,13 +430,13 @@ class TestProofVerifier(unittest.TestCase):
     def test_ed25519_signed_proof_invalid_without_public_key(self):
         rt = _ed25519_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertFalse(result.valid)
 
     def test_policy_hash_check_passes(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        v = ProofVerifier()
+        v = ProofVerifier(require_signature=False)
         result = v.verify(proof, policy_source=_POLICY_TEXT)
         self.assertTrue(result.checks["policy_hash"])
         self.assertTrue(result.valid)
@@ -444,7 +444,7 @@ class TestProofVerifier(unittest.TestCase):
     def test_policy_hash_check_fails_wrong_source(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        v = ProofVerifier()
+        v = ProofVerifier(require_signature=False)
         result = v.verify(proof, policy_source="policy wrong:\n  when 1==1 => DENY")
         self.assertFalse(result.checks["policy_hash"])
         self.assertFalse(result.valid)
@@ -452,19 +452,19 @@ class TestProofVerifier(unittest.TestCase):
     def test_policy_hash_check_skipped_when_not_provided(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertIsNone(result.checks["policy_hash"])
 
     def test_trace_check_passes(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertTrue(result.checks["trace"])
 
     def test_signature_check_skipped_for_unsigned(self):
         rt = _runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
-        result = ProofVerifier().verify(proof)
+        result = ProofVerifier(require_signature=False).verify(proof)
         self.assertIsNone(result.checks["signature"])
 
 
@@ -505,7 +505,7 @@ class TestTamperDetection(unittest.TestCase):
         return proof
 
     def _verifier(self) -> ProofVerifier:
-        return ProofVerifier().add_hmac_key("k1", _SECRET)
+        return ProofVerifier(require_signature=False).add_hmac_key("k1", _SECRET)
 
     def test_valid_proof_passes(self):
         proof = self._signed_proof()
@@ -552,7 +552,7 @@ class TestTamperDetection(unittest.TestCase):
         rt = _ed25519_runtime()
         _, proof = rt.evaluate_with_proof({"role": "admin"})
         proof.verdict = TarlVerdict.DENY
-        verifier = ProofVerifier().add_ed25519_key(
+        verifier = ProofVerifier(require_signature=False).add_ed25519_key(
             "ed1", _ed25519_public_bytes()
         )
         result = verifier.verify(proof)
@@ -611,12 +611,19 @@ class TestCheckTrace(unittest.TestCase):
         self.assertTrue(_check_trace(proof))
 
     def test_default_deny_empty_trace_passes(self):
-        proof = _make_proof(rule_index=-1, matched_condition="", trace=[])
+        proof = _make_proof(
+            rule_index=-1,
+            matched_condition="",
+            verdict=TarlVerdict.DENY,
+            trace=[],
+        )
         self.assertTrue(_check_trace(proof))
 
     def test_default_deny_all_false_passes(self):
         proof = _make_proof(
-            rule_index=-1, matched_condition="",
+            rule_index=-1,
+            matched_condition="",
+            verdict=TarlVerdict.DENY,
             trace=[self._entry(0), self._entry(1)],
         )
         self.assertTrue(_check_trace(proof))

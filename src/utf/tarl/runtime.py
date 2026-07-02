@@ -318,10 +318,11 @@ class TarlRuntime:
         )
 
         futures_by_idx = {}
+        trusted_now = self._now()
         for idx in ordered_indices:
             rule = policy.rules[idx]
             future = self.executor.submit(
-                self._evaluate_rule, rule, ctx
+                self._evaluate_rule, rule, ctx, trusted_now
             )
             futures_by_idx[idx] = (future, rule)
 
@@ -350,6 +351,15 @@ class TarlRuntime:
                 self._throw_counts[idx] = (
                     self._throw_counts.get(idx, 0) + 1
                 )
+                return TarlDecision(
+                    verdict=TarlVerdict.DENY,
+                    reason=(
+                        f"fail-closed: rule {idx} could not be evaluated: "
+                        f"{decision.reason}"
+                    ),
+                    rule_index=idx,
+                    matched_rule=str(rule),
+                )
             if matched:
                 self._hit_counts[idx] = (
                     self._hit_counts.get(idx, 0) + 1
@@ -376,7 +386,10 @@ class TarlRuntime:
         return DEFAULT_DENY
 
     def _evaluate_rule(
-        self, rule: TarlRule, context: dict
+        self,
+        rule: TarlRule,
+        context: dict,
+        now: datetime.datetime | None = None,
     ) -> tuple:
         """
         Evaluate one rule. Returns (matched: bool, TarlDecision, threw: bool).
@@ -388,7 +401,7 @@ class TarlRuntime:
         """
         try:
             tokens = PolicyParser._tokenize(rule.condition)
-            matched = SafeExpr.evaluate(tokens, context)
+            matched = SafeExpr.evaluate(tokens, context, now=now)
             if matched:
                 return True, TarlDecision(
                     verdict=rule.verdict,
@@ -400,7 +413,7 @@ class TarlRuntime:
             ), False
         except Exception as exc:
             return False, TarlDecision(
-                verdict=rule.verdict,
+                verdict=TarlVerdict.DENY,
                 reason=f"Evaluation error: {exc}",
             ), True
 
@@ -444,9 +457,12 @@ class TarlRuntime:
         trace = []
         decision = DEFAULT_DENY
         matched_idx = -1
+        trusted_now = self._now()
 
         for i, rule in enumerate(policy.rules):
-            matched, rule_dec, threw = self._evaluate_rule(rule, ctx)
+            matched, rule_dec, threw = self._evaluate_rule(
+                rule, ctx, trusted_now
+            )
             if threw:
                 self._throw_counts[i] = (
                     self._throw_counts.get(i, 0) + 1
@@ -454,8 +470,22 @@ class TarlRuntime:
             trace.append({
                 "rule_index": i,
                 "condition": rule.condition,
+                "verdict": rule.verdict.value,
                 "matched": matched,
+                **({"error": rule_dec.reason} if threw else {}),
             })
+            if threw:
+                decision = TarlDecision(
+                    verdict=TarlVerdict.DENY,
+                    reason=(
+                        f"fail-closed: rule {i} could not be evaluated: "
+                        f"{rule_dec.reason}"
+                    ),
+                    rule_index=i,
+                    matched_rule=str(rule),
+                )
+                matched_idx = -1
+                break
             if matched:
                 matched_idx = i
                 expires_at = None

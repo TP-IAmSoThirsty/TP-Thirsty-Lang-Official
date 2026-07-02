@@ -491,7 +491,7 @@ class TestTarlLanguageServer(unittest.TestCase):
         diags = srv.validate(bad_policy)
         errors = [d for d in diags if d["severity"] == 1]
         self.assertGreater(len(errors), 0)
-        self.assertIn("syntax error", errors[0]["message"].lower())
+        self.assertIn("parse error", errors[0]["message"].lower())
 
     def test_validate_diagnostic_has_required_keys(self):
         srv = self._server()

@@ -87,6 +87,11 @@ _SAFE_FUNCTIONS = frozenset({
 })
 
 _QUANTIFIERS = frozenset({"ALL", "ANY"})
+_TRUSTED_NOW_KEY = "__tarl_trusted_now"
+
+
+class ConditionTypeError(Exception):
+    """A condition could not be evaluated in a well-typed way."""
 
 
 class ExprToken:
@@ -251,6 +256,7 @@ class PolicyParser:
             m_rule = cls.RULE_RE.match(line)
             if m_rule:
                 condition = m_rule.group(1).strip()
+                cls.validate_condition(condition)
                 verdict = TarlVerdict(m_rule.group(2).upper())
                 duration = (
                     _parse_duration(m_rule.group(3))
@@ -265,6 +271,17 @@ class PolicyParser:
 
         _flush()
         return results
+
+    @classmethod
+    def validate_condition(cls, condition: str) -> None:
+        """Parse a rule condition early so malformed policies fail closed."""
+        tokens = cls._tokenize(condition)
+        parser = SafeExpr(tokens)
+        parser.parse_expr()
+        if parser.current().type != EOF:
+            raise SafeExpr.ParseError(
+                f"Unexpected token: {parser.current()}"
+            )
 
     @classmethod
     def parse(cls, text: str, name: str = "unnamed") -> TarlPolicy:
@@ -538,15 +555,26 @@ def _check_policy_temporal(
 
 # ── Temporal builtins ────────────────────────────────────────────────────────
 
-def _resolve_temporal(name: str):
-    now = datetime.datetime.now()
+def _coerce_datetime(now: Any) -> datetime.datetime:
+    if isinstance(now, datetime.datetime):
+        return now
+    if isinstance(now, str):
+        parsed = datetime.datetime.fromisoformat(now.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.astimezone()
+        return parsed
+    raise ConditionTypeError(f"invalid trusted clock value {now!r}")
+
+
+def _resolve_temporal(name: str, now: Any | None = None):
+    current = _coerce_datetime(now) if now is not None else datetime.datetime.now()
     return {
-        "CURRENT_HOUR": now.hour,
-        "CURRENT_DAY": now.day,
-        "CURRENT_WEEKDAY": now.strftime("%A").upper(),
-        "CURRENT_MONTH": now.month,
-        "CURRENT_YEAR": now.year,
-        "CURRENT_TIMESTAMP": now.isoformat(),
+        "CURRENT_HOUR": current.hour,
+        "CURRENT_DAY": current.day,
+        "CURRENT_WEEKDAY": current.strftime("%A").upper(),
+        "CURRENT_MONTH": current.month,
+        "CURRENT_YEAR": current.year,
+        "CURRENT_TIMESTAMP": current.isoformat(),
     }.get(name, False)
 
 
@@ -600,14 +628,22 @@ class SafeExpr:
         pass
 
     @classmethod
-    def evaluate(cls, expr, context: dict) -> bool:
+    def evaluate(
+        cls,
+        expr,
+        context: dict,
+        now: datetime.datetime | None = None,
+    ) -> bool:
         tokens = (PolicyParser._tokenize(expr)
                   if isinstance(expr, str) else expr)
         parser = cls(tokens)
         result = parser.parse_expr()
         if parser.current().type != EOF:
             raise cls.ParseError(f"Unexpected token: {parser.current()}")
-        return bool(cls._eval_node(result, context))
+        eval_context = dict(context)
+        if now is not None:
+            eval_context[_TRUSTED_NOW_KEY] = now
+        return bool(cls._eval_node(result, eval_context))
 
     def __init__(self, tokens: list[ExprToken]):
         self.tokens = tokens
@@ -822,7 +858,7 @@ class SafeExpr:
         if tag == "ident":
             name = node[1]
             if name in _TEMPORAL_BUILTINS:
-                return _resolve_temporal(name)
+                return _resolve_temporal(name, context.get(_TRUSTED_NOW_KEY))
             return context.get(name, False)
 
         # Dot-access: walk nested dicts
@@ -907,14 +943,10 @@ class SafeExpr:
             op = node[1]
             lv = SafeExpr._eval_node(node[2], context)
             rv = SafeExpr._eval_node(node[3], context)
-            if type(lv) is not type(rv):
-                try:
-                    if isinstance(lv, str) and isinstance(rv, (int, float)):
-                        rv = str(rv)
-                    elif isinstance(rv, str) and isinstance(lv, (int, float)):
-                        lv = str(lv)
-                except (ValueError, TypeError):
-                    return False
+            if op in (LT, GT, LE, GE):
+                lv, rv = _coerce_ordered(lv, rv)
+            elif op in (EQEQ, NE):
+                lv, rv = _coerce_equatable(lv, rv)
             try:
                 if op == EQEQ:
                     return lv == rv
@@ -976,12 +1008,71 @@ class SafeExpr:
         return None
 
 
+def _parse_numeric_string(value: str) -> int | float:
+    stripped = value.strip()
+    if not stripped:
+        raise ConditionTypeError("empty string in numeric comparison")
+    try:
+        if re.fullmatch(r"[+-]?\d+", stripped):
+            return int(stripped)
+        return float(stripped)
+    except ValueError as exc:
+        raise ConditionTypeError(
+            f"non-numeric string {value!r} in ordering comparison"
+        ) from exc
+
+
+def _numeric_value(value: Any) -> int | float:
+    if isinstance(value, bool):
+        raise ConditionTypeError("bool in ordering comparison")
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        return _parse_numeric_string(value)
+    raise ConditionTypeError(
+        f"uncomparable type {type(value).__name__} in ordering comparison"
+    )
+
+
+def _coerce_ordered(lv: Any, rv: Any) -> tuple[Any, Any]:
+    """Coerce ordered operands numerically, or raise for fail-closed eval."""
+    if isinstance(lv, str) or isinstance(rv, str):
+        return _numeric_value(lv), _numeric_value(rv)
+    if isinstance(lv, bool) or isinstance(rv, bool):
+        raise ConditionTypeError("bool in ordering comparison")
+    if isinstance(lv, (int, float)) and isinstance(rv, (int, float)):
+        return lv, rv
+    if type(lv) is type(rv):
+        return lv, rv
+    raise ConditionTypeError(
+        f"cannot order {type(lv).__name__} and {type(rv).__name__}"
+    )
+
+
+def _coerce_equatable(lv: Any, rv: Any) -> tuple[Any, Any]:
+    """Keep compatibility for numeric strings in equality comparisons."""
+    if isinstance(lv, bool) or isinstance(rv, bool):
+        return lv, rv
+    if isinstance(lv, (int, float)) and isinstance(rv, str):
+        try:
+            return lv, _parse_numeric_string(rv)
+        except ConditionTypeError:
+            return lv, rv
+    if isinstance(rv, (int, float)) and isinstance(lv, str):
+        try:
+            return _parse_numeric_string(lv), rv
+        except ConditionTypeError:
+            return lv, rv
+    return lv, rv
+
+
 # ── Module-level evaluate_policy ─────────────────────────────────────────────
 
 def evaluate_policy(
     context: dict,
     policy_text: str = "",
     policy: TarlPolicy | None = None,
+    now: datetime.datetime | None = None,
 ) -> TarlDecision:
     """
     Evaluate a policy against a context dict.
@@ -995,18 +1086,18 @@ def evaluate_policy(
             return DEFAULT_DENY
         policy = PolicyParser.parse(policy_text)
 
-    temporal = _check_policy_temporal(policy)
+    temporal = _check_policy_temporal(policy, now=now)
     if temporal is not None:
         return temporal
 
     for i, rule in enumerate(policy.rules):
         try:
-            result = SafeExpr.evaluate(rule.condition, context)
+            result = SafeExpr.evaluate(rule.condition, context, now=now)
             if result:
                 expires_at = None
                 if rule.duration_seconds:
                     expires_at = (
-                        datetime.datetime.now(datetime.UTC)
+                        (now or datetime.datetime.now(datetime.UTC))
                         + datetime.timedelta(seconds=rule.duration_seconds)
                     ).isoformat(timespec="seconds")
                 return TarlDecision(
@@ -1016,7 +1107,14 @@ def evaluate_policy(
                     matched_rule=str(rule),
                     expires_at=expires_at,
                 )
-        except Exception:
-            continue
+        except Exception as exc:
+            return TarlDecision(
+                verdict=TarlVerdict.DENY,
+                reason=(
+                    f"fail-closed: rule {i} could not be evaluated: {exc}"
+                ),
+                rule_index=i,
+                matched_rule=str(rule),
+            )
 
     return DEFAULT_DENY

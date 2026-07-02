@@ -136,7 +136,7 @@ class Scope:
 class Checker:
     """Semantic analysis and type checking for Thirsty-Lang AST."""
 
-    def __init__(self):
+    def __init__(self, effect_warnings: bool = False):
         self.scope = Scope()
         self.errors: list[Diagnostic] = []
         self.current_function_return_type: Type | None = None
@@ -144,6 +144,7 @@ class Checker:
         self.imported_names: dict[str, str] = {}  # alias -> module_path
         self._hoisted: set = set()         # top-level fn/class names
         self._governed_names: set = set()  # governed function names
+        self.effect_warnings = effect_warnings
 
     def enter_scope(self):
         self.scope = Scope(self.scope)
@@ -167,6 +168,11 @@ class Checker:
         # Check all statements
         for stmt in ast.stmts:
             self._check_stmt(stmt)
+        if self.effect_warnings:
+            from utf.thirsty_lang.proof_obligations import (
+                effect_warning_diagnostics,
+            )
+            self.errors.extend(effect_warning_diagnostics(ast))
         return self.errors
 
     def _hoist_declarations(self, stmts):
@@ -641,7 +647,7 @@ class Checker:
         return AnyType()
 
 
-def check_ast(ast: Program) -> list[Diagnostic]:
+def check_ast(ast: Program, effect_warnings: bool = False) -> list[Diagnostic]:
     """Convenience function to type-check a Program AST."""
-    checker = Checker()
+    checker = Checker(effect_warnings=effect_warnings)
     return checker.check_all(ast)

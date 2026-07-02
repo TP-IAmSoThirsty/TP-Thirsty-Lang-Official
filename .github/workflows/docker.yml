@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Image version tag (e.g. 0.8.1). Defaults to 'latest' only."
+        description: "Image version tag (e.g. 0.8.2). Defaults to 'latest' only."
         required: false
         default: ""
 
@@ -63,9 +63,9 @@ jobs:
           GHCR="ghcr.io/${OWNER}/thirsty-lang"
           HUB="docker.io/${DOCKERHUB_NAMESPACE}/thirsty-lang"
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            REF="${GITHUB_REF#refs/tags/}"   # v0.8.1 | docker-v0.8.1
-            REF="${REF#docker-}"             # v0.8.1
-            VERSION="${REF#v}"               # 0.8.1
+            REF="${GITHUB_REF#refs/tags/}"   # v0.8.2 | docker-v0.8.2
+            REF="${REF#docker-}"             # v0.8.2
+            VERSION="${REF#v}"               # 0.8.2
           else
             VERSION="${{ github.event.inputs.version }}"
           fi

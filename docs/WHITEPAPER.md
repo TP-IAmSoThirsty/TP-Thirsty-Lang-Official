@@ -1,6 +1,6 @@
 # Thirsty-Lang: A Governance-First Language for Accountable Execution
 
-**Version:** 0.8.1 · **Stack:** Universal Thirsty Family (UTF)
+**Version:** 0.8.2 · **Stack:** Universal Thirsty Family (UTF)
 **Copyright:** 2026 Thirsty's Projects LLC · **License:** Apache-2.0
 **Status of claims:** every capability below is marked *Real* (implemented and
 covered by a test) or *Roadmap / Deferred* (reserved surface, not yet enforced).
@@ -27,7 +27,7 @@ missing authority, a failed signature check, or an unavailable gate all resolve 
 
 This paper describes the language, its governance model, the T.A.R.L. policy
 engine and proof system, the offensive threat model that scopes its guarantees,
-and the engineering state of the 0.8.1 release.
+and the engineering state of the 0.8.2 release.
 
 ---
 
@@ -36,7 +36,7 @@ and the engineering state of the 0.8.1 release.
 Thirsty-Lang targets a specific adversary class: **untrusted code and untrusted
 policy**, including AI-generated programs, prompt-injected agents, malicious
 plugins/tool adapters, and operators attempting unauthorized actions. The full
-adversary catalog (A1–A14) and a 50-entry offensive challenge catalog (C001–C050)
+adversary catalog (A1–A14) and a 57-entry offensive challenge catalog (C001–C057)
 are maintained in [THREAT_MODEL.md](THREAT_MODEL.md).
 
 The design goal is not "mathematically unbreakable." It is: **no known reproducible
@@ -218,7 +218,9 @@ fail-closed denial — emits a `TarlProof` certificate binding:
   to the first match,
 - an evaluation timestamp, and an optional signature.
 
-Proofs are **unsigned by default**. Two signing modes exist:
+Runtime proof generation can be unsigned when no signing key is configured, but
+independent verification rejects unsigned proofs by default. Two signing modes
+exist:
 
 - **HMAC-SHA256** — a *symmetric* MAC: detects tampering, but anyone holding the
   shared key (including the verifier) can forge it. Documented as **not**
@@ -226,24 +228,28 @@ Proofs are **unsigned by default**. Two signing modes exist:
 - **Ed25519** — an *asymmetric* signature; the verifier needs only the public key.
   Use this when a proof must attest to the signer.
 
-### 5.5 Independent verification — permissive default, strict opt-in
+### 5.5 Independent verification — secure default, explicit unsigned mode
 
 `ProofVerifier` checks signature validity, policy-hash match (when the source is
 supplied), and trace consistency — with no runtime or policy engine required.
-The default is backward-compatible (an unsigned proof verifies). **Hardened
-deployments opt in** to strictness:
+The default requires a signature. Local unsigned-proof inspection must opt in
+explicitly:
 
 ```python
 ProofVerifier(
-    require_signature=True,                 # reject unsigned proofs
+    require_signature=True,                 # default; reject unsigned proofs
     allowed_signature_algorithms={"ed25519"},  # reject HMAC / downgrade
     require_policy_source=True,             # require policy binding
 )
+
+ProofVerifier(require_signature=False)      # explicit unsigned inspection
 ```
 
-The CLI exposes this as `tarl verify --require-signature --ed25519-only`. Strict
-verification rejects unsigned, wrong-key, tampered-field, HMAC-as-Ed25519, and
-missing-policy-source proofs (challenge C025).
+The CLI exposes this as `tarl verify --ed25519-only --policy <policy.tarl>`.
+Unsigned local inspection is explicit with `tarl verify --allow-unsigned`.
+Verification rejects unsigned-by-default, wrong-key, tampered-field,
+HMAC-as-Ed25519, trace-verdict mismatch, and missing-policy-source proofs when
+that binding is required (challenge C025/C055).
 
 ### 5.6 Static analysis (optional Z3 layer)
 
@@ -299,9 +305,9 @@ emitted manifest (challenge C034). Governance loss is never silent.
 
 ## 8. Security posture: covered vs. deferred
 
-The threat catalog (C001–C050) is the source of truth. As of 0.8.1:
+The threat catalog (C001–C057) is the source of truth. As of 0.8.2:
 
-Every challenge C001–C050 is now **Covered (test-backed)**. Highlights:
+Every challenge C001–C057 is now **Covered (test-backed)**. Highlights:
 
 - **Fail-closed core** — governed I/O/import/print without policy (C001–C004);
   non-matching capability denial (C005); denial unswallowable by `spillage`
@@ -320,11 +326,17 @@ Every challenge C001–C050 is now **Covered (test-backed)**. Highlights:
   context (C045–C046); `PathGuard` confines canonical paths against traversal and
   symlink escape (C042).
 - **Time & escalation** — `TrustedClock` decides temporal windows on verified
-  signed time, not the host clock (C043); `QuorumResolver` upgrades ESCALATE only
-  on distinct signed approvals (C050); the linter flags broad/ungated ALLOW
-  (C039).
+  signed time, not the host clock (C043); `tarl eval` refuses temporal policies
+  and `CURRENT_*` builtins without explicit `--now` (C056);
+  `QuorumResolver` upgrades ESCALATE only on distinct signed approvals (C050);
+  the linter flags broad/ungated ALLOW (C039).
+- **Adversarial peer-review fixes** — TARL ordering compares numeric-looking strings
+  numerically and denies unorderable values (C053), malformed or throwing rules
+  reject/deny instead of falling through (C054), unsigned forged proofs are not
+  valid by default and verdict-bearing traces are checked (C055), and
+  `thirsty govern --auto-tarl` emits policies keyed on runtime `action` (C057).
 
-**Operational readiness (0.8.1).** The three items previously left to the
+**Operational readiness (0.8.2).** The three items previously left to the
 embedder are now implemented in-tree: the in-language capability gate routes
 through the same `CapabilityBroker` as the out-of-language adapters (one
 enforcement path, with optional `PathGuard` confinement on file targets);
@@ -333,17 +345,17 @@ enforcement path, with optional `PathGuard` confinement on file targets);
 / `tarl keygen` provide a defined on-disk key format, file-based loading, and a
 rotation path. What genuinely remains with the embedder is *secret custody* — the
 durable stores and key files live wherever the deployment puts them (vault, HSM,
-encrypted volume), and automatic schema derivation from a policy is still future
-work. See `docs/PRODUCTION_DEPLOYMENT.md` for the deployment checklist and
+encrypted volume), and automatic schema derivation remains conservative and
+fails closed when ambiguous. See `docs/PRODUCTION_DEPLOYMENT.md` for the deployment checklist and
 THREAT_MODEL.md §"Remaining Gaps".
 
 ---
 
-## 9. Engineering state (0.8.1)
+## 9. Engineering state (0.8.2)
 
 | Property | State |
 |---|---|
-| Test suite | 1100+ tests + subtests, passing on 3.11/3.12 (incl. the full C001–C050 offensive suite) |
+| Test suite | 1233 tests + subtests, passing locally on 3.11; CI covers 3.11/3.12 (incl. the full C001–C057 offensive suite) |
 | Line coverage | ~91% (CI floor enforced) |
 | Lint | `ruff check src tests` clean |
 | Types | `mypy -p utf` clean across all modules; ships a PEP 561 `py.typed` marker; mypy is a CI gate |
@@ -351,7 +363,7 @@ THREAT_MODEL.md §"Remaining Gaps".
 | Platform | Windows/macOS/Linux; UTF-8-safe CLI output on Windows code pages |
 
 The reference implementation is an interpreter. The governance substrate meets
-its own hardened-runtime acceptance bar (§8), and as of 0.8.1 the operational
+its own hardened-runtime acceptance bar (§8), and as of 0.8.2 the operational
 items that were previously deferred — adapter routing through the broker,
 durable cross-process replay/audit state, and deployment key management — are
 implemented in-tree and exercised by a CI `production-acceptance` job. Treat it
@@ -371,8 +383,9 @@ thirsty run program.thirsty --thirst-level governed \
     --authority admin --policy access.tarl
 
 tarl eval access.tarl -c '{"role":"admin"}'
+tarl eval temporal.tarl -c '{"role":"admin"}' --now 2026-07-01T12:00:00Z
 tarl analyze coverage access.tarl
-tarl verify proof.json --require-signature --ed25519-only --ed25519-key id:HEX
+tarl verify proof.json --ed25519-only --ed25519-key id:HEX
 ```
 
 A denied governed call prints `governance denied: <fn>: <reason>` with the proof
@@ -385,7 +398,7 @@ verdict and policy hash, and exits non-zero.
 Thirsty-Lang makes authorization a property of the runtime rather than a
 convention of the code: in governed mode no effect precedes an explicit ALLOW,
 every decision carries a verifiable proof, and every "secure" claim is pinned to a
-test or labeled as roadmap. Through 0.8.1 the offensive catalog (C001–C050) is
+test or labeled as roadmap. Through 0.8.2 the offensive catalog (C001–C057) is
 closed, and the operational substrate — authority provenance, tamper-evident
 audit, replay/downgrade rejection, universal adapter brokering, durable
 cross-process state, and deployment key management — is implemented in-tree and

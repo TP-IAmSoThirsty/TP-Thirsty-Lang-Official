@@ -55,11 +55,19 @@ The optional Z3 layer is exercised only when the `analysis` extra is installed
 | Offensive threat model and challenge catalog | Real | `docs/THREAT_MODEL.md` |
 | Imported `.thirsty` modules run under the caller's governed gate (not detached core) | Real | `tests/test_threat_model_file_imports.py` |
 | Governed module with a parse error fails closed (no statements execute) | Real | `tests/test_threat_model_parser_fail_closed.py` |
-| Strict, opt-in proof verification (require signature / Ed25519-only / require policy source) | Real | `tests/test_threat_model_proof_strictness.py` |
+| Secure-by-default proof verification (signature required unless unsigned mode is explicit; Ed25519-only / policy source options) | Real | `tests/test_threat_model_proof_strictness.py`; `tests/test_peer_review_0_8_1_tarl_regressions.py` |
 | Governed build refuses governance-dropping targets unless explicitly disclosed | Real | `tests/test_threat_model_build_outputs.py` |
 | Import-only policy grants no sensitive stdlib side effect | Real | `tests/test_threat_model_capability_broker.py` |
+| Static proof-obligation manifest (`thirsty prove`) without executing side effects | Real | `tests/test_proof_obligations.py` |
+| Derived context schema from TARL policy references, fail-closed when incomplete | Real | `tests/test_proof_obligations.py`; `tests/test_threat_model_context_schema.py` |
+| Denial explanation for missing policy/context/authority/proof conditions | Real | `tests/test_proof_obligations.py` |
+| Build manifest records source/policy hashes, capabilities, schema, proof/audit requirements, Shadow status, and governance-loss status | Real | `tests/test_proof_obligations.py`; `tests/test_threat_model_build_outputs.py` |
+| TARL numeric ordering is type-safe and fail-closed on unorderable context values | Real | `tests/test_peer_review_0_8_1_tarl_regressions.py` |
+| TARL policy load and runtime evaluation reject or deny malformed/unsafe rules instead of falling through | Real | `tests/test_peer_review_0_8_1_tarl_regressions.py`; `tests/test_tarl.py::TestThrowStats` |
+| `tarl eval` requires explicit trusted time for temporal policies and `CURRENT_*` builtins | Real | `tests/test_peer_review_0_8_1_tarl_regressions.py` |
+| `thirsty govern --auto-tarl` emits policies keyed on runtime `action` context | Real | `tests/test_peer_review_0_8_1_tarl_regressions.py` |
 
-## Hardened runtime (offensive catalog C022–C050)
+## Hardened runtime (offensive catalog C022–C057)
 
 | Capability | Status | Test reference |
 |---|---|---|

@@ -30,14 +30,14 @@ def _proof(context=CTX):
 
 def test_context_binding_accepts_the_matching_context():
     proof = _proof()
-    result = ProofVerifier().verify(proof, expected_context=CTX)
+    result = ProofVerifier(require_signature=False).verify(proof, expected_context=CTX)
     assert result.checks["context_binding"] is True
     assert result.valid
 
 
 def test_context_binding_rejects_a_different_context():
     proof = _proof()
-    result = ProofVerifier().verify(
+    result = ProofVerifier(require_signature=False).verify(
         proof, expected_context={"role": "admin", "action": "drain_account"}
     )
     assert result.checks["context_binding"] is False
@@ -53,7 +53,10 @@ def test_canonical_context_hash_matches_runtime_stamp():
 
 def test_fresh_proof_within_window_is_accepted():
     proof = _proof()
-    result = ProofVerifier(max_age_seconds=300).verify(proof)
+    result = ProofVerifier(
+        require_signature=False,
+        max_age_seconds=300,
+    ).verify(proof)
     assert result.checks["freshness"] is True
     assert result.valid
 
@@ -61,7 +64,10 @@ def test_fresh_proof_within_window_is_accepted():
 def test_stale_proof_is_rejected():
     proof = _proof()
     later = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
-    result = ProofVerifier(max_age_seconds=60).verify(proof, now=later)
+    result = ProofVerifier(
+        require_signature=False,
+        max_age_seconds=60,
+    ).verify(proof, now=later)
     assert result.checks["freshness"] is False
     assert not result.valid
 
@@ -71,6 +77,7 @@ def test_stale_proof_is_rejected():
 def test_revoked_policy_hash_is_rejected():
     proof = _proof()
     result = ProofVerifier(
+        require_signature=False,
         revoked_policy_hashes={proof.policy_hash}
     ).verify(proof)
     assert result.checks["not_revoked"] is False
@@ -80,6 +87,7 @@ def test_revoked_policy_hash_is_rejected():
 def test_non_revoked_policy_passes():
     proof = _proof()
     result = ProofVerifier(
+        require_signature=False,
         revoked_policy_hashes={"sha256:deadbeef"}
     ).verify(proof)
     assert result.checks["not_revoked"] is True
@@ -91,7 +99,7 @@ def test_non_revoked_policy_passes():
 def test_replay_guard_rejects_second_use():
     proof = _proof()
     guard = ReplayGuard()
-    verifier = ProofVerifier(replay_guard=guard)
+    verifier = ProofVerifier(require_signature=False, replay_guard=guard)
     first = verifier.verify(proof)
     second = verifier.verify(proof)
     assert first.checks["not_replayed"] is True and first.valid
@@ -102,7 +110,7 @@ def test_replay_guard_rejects_second_use():
 
 def test_default_verifier_does_not_apply_replay_checks():
     proof = _proof()
-    result = ProofVerifier().verify(proof)
+    result = ProofVerifier(require_signature=False).verify(proof)
     assert result.checks["context_binding"] is None
     assert result.checks["freshness"] is None
     assert result.checks["not_revoked"] is None

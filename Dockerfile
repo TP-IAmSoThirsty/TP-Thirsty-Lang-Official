@@ -69,5 +69,5 @@ CMD ["--help"]
 # Metadata
 LABEL org.opencontainers.image.title="Thirsty-Lang" \
       org.opencontainers.image.description="A governance-first programming language family" \
-      org.opencontainers.image.version="0.8.1" \
+      org.opencontainers.image.version="0.8.2" \
       org.opencontainers.image.source="https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official"

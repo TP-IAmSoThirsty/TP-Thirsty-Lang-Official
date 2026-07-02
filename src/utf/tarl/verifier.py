@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from utf.tarl.spec import TarlProof
+from utf.tarl.spec import TarlProof, TarlVerdict
 
 
 def canonical_context_hash(context: dict) -> str:
@@ -116,7 +116,7 @@ class ProofVerifier:
 
     def __init__(
         self,
-        require_signature: bool = False,
+        require_signature: bool = True,
         allowed_signature_algorithms: set[str] | None = None,
         require_policy_source: bool = False,
         max_age_seconds: float | None = None,
@@ -124,9 +124,11 @@ class ProofVerifier:
         replay_guard: ReplayGuard | None = None,
     ) -> None:
         """
-        Strict-mode options (all default to today's permissive behavior):
+        Verification options:
 
-          require_signature             — an unsigned proof is INVALID.
+          require_signature             — an unsigned proof is INVALID by
+                                          default; pass False only for explicit
+                                          local/permissive inspection.
           allowed_signature_algorithms  — restrict accepted signature families
                                           (e.g. {"ed25519"} rejects HMAC proofs).
                                           Compared against the algorithm family
@@ -182,10 +184,11 @@ class ProofVerifier:
         Checks performed:
           signature    — HMAC-SHA256 or Ed25519 valid (or None if unsigned)
           policy_hash  — matches provided policy_source (or None if not given)
-          trace        — internal consistency (k is first True in T, verdict correct)
+          trace        — internal consistency (k is first True in T)
 
         valid = True requires:
-          - signature is True or None (unsigned)
+          - signature is True, or None only when unsigned proofs were
+            explicitly allowed
           - policy_hash is True or None (not provided)
           - trace is True
         """
@@ -340,15 +343,18 @@ def _check_trace(proof: TarlProof) -> bool:
     Verify internal consistency of the evaluation trace:
       - All entries before the matched index must have matched=False
       - The entry at matched_index must have matched=True (or rule_index==-1)
-      - Verdict must match the matched rule's declared verdict
+      - If a matched trace entry carries a declared verdict, proof.verdict
+        must match it
       - No entries after the first match
     """
     if not isinstance(proof.trace, list):
         return False
 
     if proof.rule_index == -1:
-        # DEFAULT_DENY: all trace entries must be non-matching
-        return all(
+        # No matched rule may not produce ALLOW; fail-closed DENY/ESCALATE
+        # decisions such as default-deny, schema denial, or temporal expiry
+        # can all carry rule_index=-1.
+        return proof.verdict != TarlVerdict.ALLOW and all(
             isinstance(e, dict) and not e.get("matched", True)
             for e in proof.trace
         )
@@ -365,6 +371,13 @@ def _check_trace(proof: TarlProof) -> bool:
         if i == proof.rule_index:
             if not matched:
                 return False  # claimed match but trace says no
+            declared_verdict = entry.get("verdict")
+            if declared_verdict is not None:
+                try:
+                    if TarlVerdict(declared_verdict) != proof.verdict:
+                        return False
+                except ValueError:
+                    return False
             break
         # i can never exceed rule_index: the matched entry above breaks the loop.
 

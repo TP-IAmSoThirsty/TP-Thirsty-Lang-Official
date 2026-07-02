@@ -243,16 +243,12 @@ class TestThrowStats:
     """
     Tests for TarlRuntime._throw_counts / throw_stats().
 
-    Conditions that throw through _evaluate_rule are those whose text passes
-    the RULE_RE regex (so they appear to be valid rules) but whose tokenisation
-    fails because they contain characters the lexer rejects (e.g. '@').
-    SafeExpr itself is designed to never raise — arithmetic, comparisons, and
-    safe functions all return False on error — so tokeniser failures are the
-    primary throw path in normal operation.
+    Conditions that throw through _evaluate_rule are syntactically valid rules
+    that cannot be evaluated safely for a supplied context. The runtime must
+    count them and fail closed instead of falling through to later ALLOW rules.
     """
 
-    # Condition that passes RULE_RE but causes _tokenize to raise ValueError
-    _THROW_COND = "@BAD"       # '@' is not a valid token character
+    _THROW_COND = "risk_score > 9"
     _THROW_RULE  = f"when {_THROW_COND} => DENY"
 
     def test_clean_rule_has_zero_throw_count(self):
@@ -268,8 +264,12 @@ class TestThrowStats:
         rt = TarlRuntime()
         policy_text = f"{self._THROW_RULE}\nwhen x == 1 => ALLOW"
         for v in range(3):
-            result = rt.evaluate({"x": 1, "v": v}, policy_text=policy_text)
-        assert result.verdict == TarlVerdict.ALLOW
+            result = rt.evaluate(
+                {"risk_score": object(), "x": 1, "v": v},
+                policy_text=policy_text,
+            )
+        assert result.verdict == TarlVerdict.DENY
+        assert "fail-closed" in result.reason
         stats = rt.throw_stats()
         assert stats.get(0, 0) == 3, f"Expected 3 throws on rule 0, got {stats}"
 
@@ -278,20 +278,22 @@ class TestThrowStats:
         rt = TarlRuntime()
         policy_text = f"{self._THROW_RULE}\nwhen true => ALLOW"
         for _ in range(5):
-            rt.evaluate({}, policy_text=policy_text)
+            rt.evaluate({"risk_score": object()}, policy_text=policy_text)
         stats = rt.throw_stats()
         assert stats.get(0, 0) > 0, "throw_count should be nonzero for always-throwing rule"
         assert rt._hit_counts.get(0, 0) == 0, "hit_count must be zero for a never-matching rule"
 
-    def test_partially_broken_predicate_both_counts_nonzero(self):
-        # Two rules: rule 0 throws, rule 1 matches. After evaluation:
-        # throw_count[0] > 0 and hit_count[1] > 0 — two distinct signals.
+    def test_broken_predicate_does_not_hit_later_allow(self):
         rt = TarlRuntime()
         policy_text = f"{self._THROW_RULE}\nwhen x == 1 => ALLOW"
-        rt.evaluate({"x": 1}, policy_text=policy_text)
+        result = rt.evaluate(
+            {"risk_score": object(), "x": 1},
+            policy_text=policy_text,
+        )
         stats = rt.throw_stats()
+        assert result.verdict == TarlVerdict.DENY
         assert stats.get(0, 0) > 0, "rule 0 should have throw_count > 0"
-        assert rt._hit_counts.get(1, 0) > 0, "rule 1 should have hit_count > 0"
+        assert rt._hit_counts.get(1, 0) == 0, "rule 1 must not be reached"
 
     def test_throw_stats_returns_copy(self):
         rt = TarlRuntime()
@@ -303,7 +305,7 @@ class TestThrowStats:
         from utf.tarl.core import PolicyParser
         rt = TarlRuntime()
         policy_text = f"{self._THROW_RULE}\nwhen true => ALLOW"
-        rt.evaluate({}, policy_text=policy_text)
+        rt.evaluate({"risk_score": object()}, policy_text=policy_text)
         assert rt.throw_stats() != {}, "throw_count should be nonzero before reset"
         rt.set_policy(PolicyParser.parse("when x == 1 => ALLOW"))
         assert rt.throw_stats() == {}
@@ -312,7 +314,10 @@ class TestThrowStats:
         rt = TarlRuntime()
         policy_text = f"{self._THROW_RULE}\nwhen true => ALLOW"
         for _ in range(2):
-            rt.evaluate_with_proof({}, policy_text=policy_text)
+            rt.evaluate_with_proof(
+                {"risk_score": object()},
+                policy_text=policy_text,
+            )
         stats = rt.throw_stats()
         assert stats.get(0, 0) == 2
 
@@ -343,11 +348,17 @@ when count > 100 => ESCALATE"""
         assert result.verdict == TarlVerdict.DENY
 
         # Test escalate condition
-        result = evaluate_policy({'role': 'user', 'action': 'delete', 'resource': 'critical'}, policy_text)
+        result = evaluate_policy(
+            {'role': 'user', 'level': 1, 'action': 'delete', 'resource': 'critical'},
+            policy_text,
+        )
         assert result.verdict == TarlVerdict.ESCALATE
 
         # Test deny condition
-        result = evaluate_policy({'role': 'user', 'action': 'write', 'resource': 'system'}, policy_text)
+        result = evaluate_policy(
+            {'role': 'user', 'level': 1, 'action': 'write', 'resource': 'system'},
+            policy_text,
+        )
         assert result.verdict == TarlVerdict.DENY
 
         # Test no match - default deny

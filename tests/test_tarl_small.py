@@ -28,23 +28,23 @@ def test_archive_query_and_count_filters(tmp_path):
         assert arc.count(verdict="ALLOW", from_dt="2000-01-01",
                          to_dt="2100-01-01") == 1
         # query with a verifier applies the signature filter
-        filtered = arc.query(verifier=ProofVerifier())
+        filtered = arc.query(verifier=ProofVerifier(require_signature=False))
         assert len(filtered) == 1
 
 
 def test_verifier_signature_no_separator():
-    v = ProofVerifier()
+    v = ProofVerifier(require_signature=False)
     assert v._check_signature(SimpleNamespace(signature="nosep")) is False
 
 
 def test_verifier_signature_unknown_algorithm():
-    v = ProofVerifier()
+    v = ProofVerifier(require_signature=False)
     assert v._check_signature(
         SimpleNamespace(signature="weird-alg:abcd", key_id=None)) is False
 
 
 def test_verifier_signature_none():
-    v = ProofVerifier()
+    v = ProofVerifier(require_signature=False)
     assert v._check_signature(SimpleNamespace(signature="")) is None
 
 

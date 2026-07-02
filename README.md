@@ -60,7 +60,7 @@ pip install thirsty-lang
 Pinned release:
 
 ```bash
-pip install thirsty-lang==0.8.1
+pip install thirsty-lang==0.8.2
 ```
 
 From source:
@@ -257,12 +257,16 @@ thirsty --help
 thirsty run program.thirsty
 thirsty fmt program.thirsty
 thirsty build program.thirsty --target js
+thirsty build program.thirsty --target js --policy policy.tarl --emit-manifest
+thirsty prove program.thirsty --policy policy.tarl --emit-manifest
+thirsty explain-denial program.thirsty --policy policy.tarl
 thirsty govern program.thirsty
 thirsty lsp
 
 tarl --help
 tarl eval policy.tarl --context '{"role":"admin"}'
-tarl verify proof.json --require-signature --ed25519-only
+tarl eval temporal-policy.tarl --context '{"role":"admin"}' --now 2026-07-01T12:00:00Z
+tarl verify proof.json --ed25519-only
 tarl audit verify-chain audit.db
 
 shadow-thirst --help
@@ -273,12 +277,43 @@ thirst-of-gods --help
 
 | Command | Current | Surface |
 |---|---|---|
-| `thirsty` | 🌊 | run, format, build, govern, LSP, docs |
+| `thirsty` | 🌊 | run, format, build, static proof-obligation reports, denial explanations, govern, LSP, docs |
 | `tarl` | 🛡️ | evaluate policies, verify proofs, inspect audits |
 | `shadow-thirst` | 🌑 | analyze mutation and promotion risk |
 | `tscg` | 🧬 | parse and canonicalize symbolic constraints |
 | `tscg-b` | 📡 | encode and decode binary constraint frames |
 | `thirst-of-gods` | ⚡ | validate higher-tier language contracts |
+
+Proof-oriented commands are static unless explicitly documented otherwise:
+
+- `thirsty prove program.thirsty --policy policy.tarl --emit-manifest` parses,
+  checks, and emits a machine-readable proof-obligation report without executing
+  program side effects. The report includes functions, imports, sensitive
+  stdlib calls, governed calls, required TARL actions, required capabilities,
+  context schema, authority requirements, contract obligations, proof mode,
+  audit requirement, governance-loss status, and unresolved proof gaps.
+  Required TARL actions include capability actions and governed function-call
+  actions.
+- `thirsty explain-denial program.thirsty --policy policy.tarl` emits a
+  machine-readable explanation of missing policy, context, authority, and proof
+  conditions for the static obligation set.
+- `thirsty build ... --emit-manifest --policy policy.tarl` records source and
+  policy hashes, required capabilities, context schema, proof/audit
+  requirements, Shadow status when statically visible, and governance-loss
+  status in the build manifest.
+
+Explicit context schemas can be attached with `--context-schema schema.json`.
+The compact schema shape is:
+
+```json
+{"fields": {"user.role": "string", "risk": {"kind": "number", "required": false}}}
+```
+
+T.A.R.L. verification is secure by default: `tarl verify` and
+`ProofVerifier()` reject unsigned proofs unless `--allow-unsigned` or
+`ProofVerifier(require_signature=False)` is used explicitly for local
+inspection. `tarl eval` refuses temporal policy windows and `CURRENT_*`
+builtins unless `--now` supplies the trusted evaluation time.
 
 ## Evidence-First Claims
 

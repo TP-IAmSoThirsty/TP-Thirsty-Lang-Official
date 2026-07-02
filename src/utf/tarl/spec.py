@@ -245,10 +245,11 @@ class TarlProof:
       σ    — optional HMAC-SHA256 tag or Ed25519 signature over the canonical
              encoding
 
-    Proofs are **unsigned by default**. HMAC-SHA256 remains available as a
-    symmetric compatibility mode: it is forgeable by any party that holds the
-    key, including a verifier. Use Ed25519 for non-repudiable asymmetric proof
-    signatures where the verifier has only the public key.
+    Runtime-generated proofs can be unsigned when no signing key is configured,
+    but the verifier rejects unsigned proofs by default. HMAC-SHA256 remains
+    available as a symmetric compatibility mode: it is forgeable by any party
+    that holds the key, including a verifier. Use Ed25519 for non-repudiable
+    asymmetric proof signatures where the verifier has only the public key.
     """
     policy_hash: str          # "sha256:<hex>"
     context_hash: str         # "sha256:<hex>"
