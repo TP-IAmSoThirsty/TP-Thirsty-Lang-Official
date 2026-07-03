@@ -70,8 +70,23 @@ git clone https://github.com/TP-IAmSoThirsty/TP-Thirsty-Lang-Official.git
 cd TP-Thirsty-Lang-Official
 pip install -e .
 ```
+---
+## Why Thirsty-Lang? ##
 
-## A First Thirsty Program
+*Traditional programming languages answer one question well:*
+
+Can this code execute?
+
+*Thirsty-Lang asks an additional question:*
+
+Should this code execute under the current authority, policy, and context?
+
+*Instead of treating governance as documentation, middleware, or operational policy applied after deployment, Thirsty-Lang treats governance as part of the execution model itself. Sensitive operations can require policy evaluation, authority verification, proof generation, and audit recording before producing governed effects.*
+
+The result is a language designed to make execution not only programmable, but explainable, attributable, and defensible.
+
+---
+## A First Thirsty Program ##
 
 ```thirsty
 module hello: core
