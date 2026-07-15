@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-07-15
+
+### Added
+- `docs/FEATURES.md` — a features reference and capability matrix for the
+  Thirsty-Lang family, merged from the `docs/features-whitepaper` branch.
+
+### Changed
+- Consolidated all work onto `master`. The 11 feature/fix/chore/harden branches
+  were merged (where they carried unique work) or folded in and removed; the
+  repository now ships a single `master` branch with full history.
+
 ## [0.8.1] - 2026-06-29
 
 ### Fixed — Adversarial peer-review findings (core language)

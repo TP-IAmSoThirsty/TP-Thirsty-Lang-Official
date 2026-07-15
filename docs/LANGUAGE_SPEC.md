@@ -1,6 +1,6 @@
 # Thirsty-Lang Language Specification
 
-**Version:** 0.8.2
+**Version:** 0.8.3
 **Copyright:** 2026 Thirsty's Projects LLC (Apache 2.0)
 
 ---

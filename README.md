@@ -60,7 +60,7 @@ pip install thirsty-lang
 Pinned release:
 
 ```bash
-pip install thirsty-lang==0.8.2
+pip install thirsty-lang==0.8.3
 ```
 
 From source:
